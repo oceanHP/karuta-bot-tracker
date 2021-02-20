@@ -61,7 +61,7 @@ baseValueFlag = True
 async def on_ready():
     print(f'{bot.user.name} has connected to Discord!')
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="pog.helpme"))
-    print('Status has been changed.\n')
+    print("Bot status has been changed to list the bot help command!\n")
 
 @bot.command(name='helpme')
 # prints list of commands
@@ -143,7 +143,7 @@ async def on_message(message):
 
 
 @bot.command(name='basetracker')
-# this controls the flags for the bot
+# this controls the base value tracker flag
 async def on_message(message):
     if message.author == bot.user:
         return
@@ -245,6 +245,7 @@ async def on_message(effort_message_request):
 
     # pull the user ID into a variable
     requester_user_id = effort_message_request.author.id
+    # initialise the database from the csv file
     database_user_cards = pd.read_csv(
         filepath_or_buffer=r"C:\Users\Ocean\PycharmProjects\discord-karuta-tracker\karutaCardInfoTest.csv",
         sep=',',
@@ -252,6 +253,7 @@ async def on_message(effort_message_request):
         dtype={'cardCode': str,
                'cardEffort': np.int16,
                'lastUpdated': np.float64})
+    # sort the database by effort in descending order
     database_user_cards.sort_values(by='cardEffort',
                                     ascending=False,
                                     inplace=True)
@@ -505,9 +507,9 @@ async def on_message(message):
         # old (in fn). - new numb.  - data
         # 0            - 0          - character
         # 1            - 1          - series
-        # 2            - 2          - Edition
+        # 2            - 2          - Wishlisted
         # 3            -            - empty space
-        # 4            - 3          - wishlisted
+        # 4            - 3          - Edition
         # 5            -            - empty space
         # 6            - 4          - total generated
         # 7            - 5          - total claimed
