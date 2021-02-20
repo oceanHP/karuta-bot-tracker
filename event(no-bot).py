@@ -22,6 +22,9 @@ from datetime import timezone
 
 # import multithreading as mp
 
+# import re package to make data parsing easier
+import re
+
 # importing pandas for csv manipulation
 import pandas as pd
 
@@ -504,47 +507,67 @@ async def on_message(message):
         if baseValueFlag == False:
             return
         # we define a function that takes in a message and parses each required piece of information into an array.
-        # old (in fn). - new numb.  - data
-        # 0            - 0          - character
-        # 1            - 1          - series
-        # 2            - 2          - Wishlisted
-        # 3            -            - empty space
-        # 4            - 3          - Edition
-        # 5            -            - empty space
-        # 6            - 4          - total generated
-        # 7            - 5          - total claimed
-        # 8            - 6          - total burned
-        # 9            - 7          - total in circulation
-        # 10           - 8          - claim rate. not needed to write into our array
-        # 11           - 9          - average claim rate
-        # 12           -            - empty space
-        # 13           - 10         - 4* circulation
-        # 14           - 11         - 3* circulation
-        # 15           - 12         - 2* circulation
-        # 16           - 13         - 1* circulation
+        # array index - data
+        # 0     - character
+        # 1     - series
+        # 2     - Wishlisted
+        # 3     - empty space
+        # 4     - Edition
+        # 5     - empty space
+        # 6     - total generated
+        # 7     - total claimed
+        # 8     - total burned
+        # 9     - total in circulation
+        # 10    - claim rate. not needed to write into our array
+        # 11    - average claim rate
+        # 12    - empty space
+        # 13    - 4* circulation
+        # 14    - 3* circulation
+        # 15    - 2* circulation
+        # 16    - 1* circulation
+        # 17    - 0* circulation
         def lookupParser(lookup_message):
             # first, check that the message is from the bot.
-            if lookup_message.author.id == KARUTA_BOT:
-                # taking input as the lookup message, if the message does not embeds then it's not a lookup card.
+            if int(lookup_message.author.id) == KARUTA_BOT:
+                # taking input as the lookup message, if the message does not embeds then it's not a lookup message.
                 if lookup_message.embeds:
                     # we now check if this is actually the lookup by searching on text that only appears in
+                    # the lookup message.
+                    # we assign a variable to the embed description due to python limitations
                     message_text = lookup_message.embeds[0].description
+                    # once the message is confirmed to be a lookup message, parse the message by a new line
                     if 'Average claim time' in message_text:
                         card_stats = message_text.split("\n")
+                        # initialise the array to store all this data
                         card_stats_parsed = []
+                        # iterate through each element/line of the message
                         for i in range(len(card_stats)):
-                            #skip the empty spaces and claim rate
-                            if i in (3,5,10,12):
+                            # there are new line entries: if those are present, then we want to remove these later
+                            # we write them to a list
+                            j=[]
+                            if card_stats[i] == '':
                                 pass
-                            # if we want to keep the category, we can remove the third element in the array
-                            # after splitting.
                             else:
-                                card_stat_single = card_stats[i].split('**')[1]
-                                card_stats_parsed.append(card_stat_single)
-                        # the array has now been parsed with the key detailed in the function comment:
-                        return card_stats_parsed
+                                card_stats[i] = card_stats[i].split('·')
+                                # remove trailing spaces from the category names
+                                card_stats[i][0] = card_stats[i][0].strip()
+                                # we now want to remove the formatting on the data. For non-integers, we must
+                                # specify the specific elements (character, series, claim time)
+                                character_string_elements = [0,1,11]
+                                if i in character_string_elements:
+                                    card_stats[i][1] = re.sub('[*]', '', card_stats[i][1])
+                                    # for the claim time, we must have a more tailored solution. this isn't exactly
+                                    # the most elegant solution though.
+                                    if i == 11:
+                                        card_stats[11][1] = card_stats[11][1].strip()
+                                        card_stats[11][1] = card_stats[11][1].split()[0]
+                                # all other elements are required in integer form.
+                                else:
+                                    card_stats[i][1] = re.sub('\D','',card_stats[i][1])
+                        return card_stats
 
         print(lookupParser(message))
+
 
         if message.embeds:
             messageText = message.embeds[0].description
