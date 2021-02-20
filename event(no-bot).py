@@ -566,55 +566,35 @@ async def on_message(message):
                                     card_stats[i][1] = re.sub('\D','',card_stats[i][1])
                         return card_stats
 
-        print(lookupParser(message))
+        # define a function that calculates the base value
+        def baseValueCalculation(generated, claimed, burned):
+            arg1 = (float(claimed) / float(generated)) * 100
+            arg2 = (float(burned) / float(generated)) * 100
+
+            value = round((arg1 - arg2) * 0.98 - 0.04)
+            return value
 
 
-        if message.embeds:
-            messageText = message.embeds[0].description
-            if 'Average claim time' in messageText:
-                cardStats = messageText.split('·')
+        # if we have parsed data, then proceed with the rest of the code
+        if lookupParser(message):
+            base_value = baseValueCalculation(lookupParser(message)[6][1],lookupParser(message)[7][1],lookupParser(message)[8][1])
+            # now do some flair to show cutoffs.
+            base_message_main = f'{lookupParser(message)[0][1]} has a base value of around {base_value} at ★★★★. '
+            trash_cutoff = 20
+            worker_cutoff = 70
+            god_cutoff = 80
+            if base_value > worker_cutoff:
+                if base_value > god_cutoff:
+                    base_value_message_flavour = f'This is god-tier status! (Nezuko has a value of 84)'
 
-                characterNameArray = cardStats[1]
-                characterName = characterNameArray.split('**')[1]
-
-                # from the cardStats, the info we want is held as follows:
-                # element 5 - total generated
-                # element 6 - total claimed
-                # element 7 - burned
-                # parse these values and assign to a new array.
-                i = 0
-                baseValueStats = []
-                while i <= 2:
-                    stat = cardStats[i + 5].split('**')[1]
-                    stat = stat.replace(',', '')
-                    baseValueStats.append(int(stat))
-                    i += 1
-
-                # define a function that calculates the base value
-                def baseValueCalculation(generated, claimed, burned):
-                    arg1 = (float(claimed) / float(generated)) * 100
-                    arg2 = (float(burned) / float(generated)) * 100
-
-                    value = round((arg1 - arg2) * 0.98 - 0.04)
-                    return value
-
-                base_value = baseValueCalculation(baseValueStats[0], baseValueStats[1], baseValueStats[2])
-                # now do some flair to show cutoffs.
-                base_message_main = f'{characterName} has a base value of around {base_value} at ★★★★. '
-                trash_cutoff = 20
-                worker_cutoff = 70
-                god_cutoff = 80
-                if base_value > worker_cutoff:
-                    if base_value > god_cutoff:
-                        base_value_message_flavour = f'This is god-tier status! (Nezuko has a value of 84)'
-
-                    else:
-                        base_value_message_flavour = f"They'll make a good worker (70+ range)."
                 else:
-                    base_value_message_flavour = ''
-                base_message = base_message_main + base_value_message_flavour
-                await message.channel.send(base_message)
-    await bot.process_commands(message)
+                    base_value_message_flavour = f"They'll make a good worker (70+ range)."
+            else:
+                base_value_message_flavour = ''
+            base_message = base_message_main + base_value_message_flavour
+            await message.channel.send(base_message)
+        await bot.process_commands(message)
+
 
 # ---- DEPRECATED CODE ----
 
