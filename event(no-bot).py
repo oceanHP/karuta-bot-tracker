@@ -129,7 +129,6 @@ async def on_message(message):
     await message.channel.send(helpMessage)
     await bot.process_commands(message)
 
-
 @bot.command(name='flags')
 # prints flag settings
 async def on_message(message):
@@ -166,7 +165,7 @@ async def on_message(message):
     else:
         await message.channel.send("The base value tracker has been turned on. I will post a message detailing the "
                                    "card's base value at mint condition following every lookup command.")
-    bot.process_commands(message)
+    await bot.process_commands(message)
 
 @bot.command(name='dropcount')
 # this is sample code to count drops
@@ -444,15 +443,15 @@ async def on_message(effort_message_request):
             workerInfoArray.append([card_name_search[1], card_code, 0, ''])
             print(f'FAIL: The message was from the bot, but did not have the card name.\n')
 
+    # first, filter out all workers by the requested user id
+
     print('Sorting the database by effort now..')
     database_user_cards.sort_values(by='cardEffort',
                                     ascending=False,
                                     inplace=True)
 
-    # now, generate the message that displays the worker info. We also define the start of the markdown text here,.
+    # now, generate the message that displays the worker info.
     workerMessageTitle = f"I'm done <@{requester_user_id}>! Your best workers are listed below (´• ω •`)ﾉ \n\n"
-    # markdownInitialiser = "```diff"
-    # workerMessageFinal = workerMessageTitle + markdownInitialiser
     workerMessageFinal = workerMessageTitle
 
     print('Generating worker list to push to Discord...')
@@ -506,6 +505,7 @@ async def on_message(message):
         # first, we only want messages with embeds. if this is empty, then break.
         if baseValueFlag == False:
             return
+
         # we define a function that takes in a message and parses each required piece of information into an array.
         # array index - data
         # 0     - character
@@ -574,31 +574,88 @@ async def on_message(message):
             value = round((arg1 - arg2) * 0.98 - 0.04)
             return value
 
+        # define a function which prints the messages to be sent.
+        trash_cutoff = 20
+        worker_cutoff = 70
+        god_cutoff = 80
+        edition_count = 2
+        def baseValueResponse(lookup_data):
+            if lookup_data:
+                base_value = baseValueCalculation(lookup_data[6][1], lookup_data[7][1], lookup_data[8][1])
+                # now do some flair to show cutoffs.
+                base_message_main = f'The ◈{lookup_data[4][1]} edition{lookup_data[0][1]} has a base value of around {base_value} at ★★★★. '
 
-        # if we have parsed data, then proceed with the rest of the code
-        if lookupParser(message):
-            base_value = baseValueCalculation(lookupParser(message)[6][1],lookupParser(message)[7][1],lookupParser(message)[8][1])
-            # now do some flair to show cutoffs.
-            base_message_main = f'{lookupParser(message)[0][1]} has a base value of around {base_value} at ★★★★. '
-            trash_cutoff = 20
-            worker_cutoff = 70
-            god_cutoff = 80
-            if base_value > worker_cutoff:
-                if base_value > god_cutoff:
-                    base_value_message_flavour = f'This is god-tier status! (Nezuko has a value of 84)'
+                if base_value > worker_cutoff:
+                    if base_value > god_cutoff:
+                        base_value_message_flavour = f'This is god-tier status! (Nezuko has a value of 84)'
 
+                    else:
+                        base_value_message_flavour = f"They'll make a good worker (70+ range)."
                 else:
-                    base_value_message_flavour = f"They'll make a good worker (70+ range)."
-            else:
-                base_value_message_flavour = ''
-            base_message = base_message_main + base_value_message_flavour
-            await message.channel.send(base_message)
-        await bot.process_commands(message)
+                    base_value_message_flavour = ''
+                base_message = base_message_main + base_value_message_flavour
+                return base_message
 
+        data = lookupParser(message)
+        if data:
+            responseText = baseValueResponse(data)
+            response = await message.channel.send(responseText)
+            # if the card has a second edition, then we wait to see if the user want to see the second edition.
+            # this can be made more robust in the future. For now, we do a simple check on if the message has been edited.
+            # wait for the message to be edited
+            await bot.wait_for('message_edit')
+            # first, check if the message is updated with second edition info
+            if int(lookupParser(message)[4][1]) == 2:
+                # we now need to check that the array is of the correct length. we do not want to take messages
+                # that have not been released yet.
+                if len(lookupParser(message)) > 10:
+                    # apply the text generator function to get the second edition message
+                    data2 = lookupParser(message)
+                    responseText2 = baseValueResponse(data2)
+                    await response.edit(content=f"{responseText}\n{responseText2}\n\n*Base value numbers for 2nd"
+                                                f" edition cards are not accurate at the moment due to the new release."
+                                                f" This should stabilise once more of the cards are printed.* ")
+            await bot.process_commands(message)
+
+# @bot.event
+# async def on_message(message):
+#
+#     # define a function that parses out a worker info message
+#     # 0     - character
+#     # 1     - effort
+#     # 2     - healthy | injured for x days
+#     # 3     - effort modifiers
+#     # 4     - x Base Value
+#     # the following are in random order
+#     # 5     - x <grade> Wellness
+#     # 6     - x <grade> Purity
+#     # 7     - x <grade> Quickness
+#     # 8     - x <grade> Grabber
+#     # 6     - x <grade> Dropper
+#     # 6     - x <grade> Style
+#     # 6     - x <grade> Toughness
+#     def workerInfoParser(lookup_message):
+#         # first, check that the message is from the bot.
+#         if int(lookup_message.author.id) == KARUTA_BOT:
+#             # taking input as the lookup message, if the message does not contain embeds then it's not a lookup message.
+#             if lookup_message.embeds:
+#                 # we now check if this is actually the lookup by searching on text that only appears in
+#                 # the lookup message.
+#                 # we assign a variable to the embed description due to python limitations
+#                 message_text = lookup_message.embeds[0].description
+#                 # once the message is confirmed to be a lookup message, parse the message by a new line
+#                 if 'Effort modifiers' in message_text:
+#                     worker_stats = message_text.split("\n")
+#
+#
+#         return worker_stats
+#
+#     print(workerInfoParser(message))
 
 # ---- DEPRECATED CODE ----
 
 # flower detection bot the Valentine's day event 2021. Needs to be refactored to use the bot object.
+
 @client.event
 # this event is for the flower event
 async def on_reaction_add(reaction, user):
