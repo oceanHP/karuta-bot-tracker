@@ -256,7 +256,7 @@ async def on_message(effort_message_request):
     requester_user_id = effort_message_request.author.id
     # initialise the database from the csv file
     database_user_cards = pd.read_csv(
-        filepath_or_buffer=r"C:\Users\Ocean\PycharmProjects\discord-karuta-tracker\initialisedDatabase.csv",
+        filepath_or_buffer=r"initialisedDatabase.csv",
         sep=',',
         index_col=False,
         dtype={'cardCode': str,

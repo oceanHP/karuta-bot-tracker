@@ -1,0 +1,3 @@
+[console_scripts]
+gimages = google_images_search.cli:cli
+
