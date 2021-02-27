@@ -270,6 +270,9 @@ async def on_message(effort_message_request):
     # filter the database on the requested user Id.
     database_user_cards = database_user_cards[database_user_cards['userId'] == requester_user_id]
 
+    if database_user_cards.empty:
+        await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd")
+
     # define a function which takes in a database and spits out an array of worker info, with each index corresponding
     # to page of worker details
     def embedGenerator(database):
@@ -329,6 +332,9 @@ async def on_message(effort_message_request):
         return table_string_pages
 
     worker_pages = embedGenerator(database_user_cards)
+
+    #read in the event database table to get the latest time.
+    # then filter for the selected user. if empty, get server time
     search_info = 'The last search was run at {time} by {user}.'
     # now create an embed.
     # we also want a comment saying when the last search was run.
@@ -356,11 +362,7 @@ async def on_message(effort_message_request):
     time.sleep(1)
     await embed_message.add_reaction('🔍')
 
-    # we want to timeout the message after a certain time. methods are:
-    # 1     - static time after the embed message was sent
-    # 2     - static time after the last user reaction
-    # 2 is harder to implement, so we just do a 2 minute timeout for now.
-    # now wait for a reaction from the user
+    # we want to timeout the message after a certain time
     embed_cutoff_time = embed_message.created_at.timestamp() + float(120)
     while float(time.time()) < embed_cutoff_time:
         try:
@@ -422,6 +424,8 @@ async def on_message(effort_message_request):
                             updated_embed.set_footer(text=f"Showing workers "
                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+                    # if it's a search, then we can back out and edit the embed
 
                     await embed_message.edit(embed=updated_embed)
 
@@ -854,7 +858,18 @@ async def on_message(message):
         else:
             return
 
-
+    # sample test code
+    # async for elem in message.channel.history(limit=5):
+    #     # proceed if there is no message content
+    #     if not elem.content:
+    #         # define the string into a variable
+    #         text = elem.embeds[0].description
+    #         # search for the first instance of a user id
+    #         m = re.search('@(.+?)>', text)
+    #         if m:
+    #             found = m.group(1)
+    #             print(found)
+    # exit()
 
     confirmation_message = await message.channel.send('This will scan the entire server for worker information. '
                                                       'This will take a looong time, are you sure you '
@@ -899,10 +914,15 @@ async def on_message(message):
             start_time = time.time()
             await confirmation_message.edit(content='Looking through all messages, this might take a while...')
             previous_message = ''
-            database_codes = []
-            validated_codes = []
 
-            async for elem in message.channel.history(limit=None):
+            # define the arrays that we will be writing to for the bot
+            user_id_data = []
+            character_name_data = []
+            card_code_data = []
+            card_effort_data = []
+            recovery_date_data = []
+
+            async for elem in message.channel.history(limit=2000):
                 # for each message, look for all messages of format 'kwi <code>'. we can ignore anything with
                 # content that is empty, as these are bot messages.
                 if elem.content:
@@ -914,11 +934,12 @@ async def on_message(message):
                         if message_split[0] == 'kwi':
                             # if we match a kwi, this means the message is of the form kwi <string>.
                             # we now check to see if we've matched this code before. If we have, then we skip.
-                            if message_split[1] not in validated_codes:
-                                # we'll first need to check that there is an embed...
+                            if message_split[1] not in card_code_data:
+                                # now that we've matched a new card code, make sure that the previous message
+                                # contains an embed.
                                 if previous_message.embeds:
-                                    # just in case we get the message is incorrect, we will check to see if the embed content
-                                    # contains worker information.
+                                    # just in case we get the message is incorrect, we will check to see if the embed
+                                    # content contains worker information.
                                     if 'Effort modifiers' in previous_message.embeds[0].description:
                                         # now run our parser to pull out the required data. we should refactor this fn to save
                                         # on compute time.
@@ -926,38 +947,63 @@ async def on_message(message):
 
                                         # before creating the database entry, we generate the recovery date if applicable.
                                         recovery_date = recoveryDateCalculator(previous_message.created_at, (parsed_message[3]))
-                                        newEntry = pd.DataFrame({'userId': [elem.author.id],
-                                                                 'characterName': [parsed_message[0][1].strip()],
-                                                                 'cardCode': [message_split[1]],
-                                                                 'cardEffort': [parsed_message[1][1].strip()],
-                                                                 'recoveryDate': [recovery_date]})
-                                        newEntry.to_csv('initialisedDatabase.csv',
-                                                        float_format='%.5f',
-                                                        mode='a',
-                                                        index=False,
-                                                        header=False)
-                                        # now, add the card code to an array which we can then filter out in future iterations
-                                        database_codes.append(message_split[1])
 
-                # # if there was no match on the content, then it's a bot message.
-                # # in this case, we want to check if the bot message contains the card code.
-                # elif not elem.content:
-                #     # firstly, we don't want to check messages we've already validated.
-                #     for code in validated_codes:
-                #         if code in elem.content.embeds[0].description:
-                #             pass
-                #         # we now check to see what code
-                #         else:
-                #             pass
+                                        # now add data to each of the list elements. we don't add to the user id column
+                                        # since anyone can run a kwi
+                                        character_name_data.append(parsed_message[0][1].strip())
+                                        card_code_data.append(message_split[1])
+                                        card_effort_data.append(parsed_message[1][1].strip())
+                                        recovery_date_data.append(recovery_date)
+
                 # regardless of if it was matched, we now write the message to a variable.
                 # this allows us to compare previous messages to current ones.
                 previous_message = elem
 
+            # once the list of workers has been generated, we need to run another check to make sure that the person
+            # actually owns the card. We have assumed that the person doing the kwi command owns it, so we now do a
+            # check for the first message that is:
+            # - by the bot
+            # - contains the card code
+            # - contains the text "card details", or the text "cards carried by"
+
+            #define the array with empty data
+            user_id_data = [None]*len(character_name_data)
+            valid_bot_message_titles = ['Card Details', 'Card Collection']
+            for code in range(len(card_code_data)):
+                async for elem in message.channel.history(limit=2000):
+                    if elem.author.id == KARUTA_BOT:
+                        if elem.embeds:
+                            if card_code_data[code] in elem.embeds[0].description:
+                                if elem.embeds[0].title in valid_bot_message_titles:
+                                    text = elem.embeds[0].description
+                                    # search for the first instance of a user id
+                                    user_id = re.search('@(.+?)>', text)
+                                    user_id_string = user_id.group(1)
+                                    user_id_data[code] = user_id_string
+                                    # once we've made a match, we can break the for loop and move onto the next code.
+                                    break
+
+            # turn our array into a database
+            data = {'userId' : user_id_data,
+                    'characterName' : character_name_data,
+                    'cardCode': card_code_data,
+                    'cardEffort' : card_effort_data,
+                    'recoveryDate' : recovery_date_data}
+
+            effort_database = pd.DataFrame(data=data)
+            effort_database.to_csv('initialisedDatabase.csv',
+                                   index=False,
+                                   float_format='%.5f')
+
+            # now write out an informational message
             finished_time = time.time()
             elapsed_time = finished_time - start_time
             await confirmation_message.channel.send(content=f"All done <@{message.author.id}> ! "
-                                                            f"I've recorded {len(validated_codes)} entries, "
-                                                            f"which took me {str(round(elapsed_time, 2))} seconds.")
+                                                            f"I've recorded {len(user_id_data)} entries, "
+                                                            f"of which {len([x for x in user_id_data if x is not None])} were matched to users. "
+                                                            f"This took me {str(round(elapsed_time, 2))} seconds.")
+
+            # write the update event data to a dataframe, then write it into the database.
             update_event = pd.DataFrame({'requestedBy': ['Initialiser'],
                                          'timeRequested' : [finished_time]})
             update_event.to_csv('workerUpdateEvent.csv',
