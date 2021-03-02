@@ -255,13 +255,12 @@ async def on_message(effort_message_request):
     # pull the user ID into a variable
     requester_user_id = effort_message_request.author.id
     # initialise the database from the csv file
-    database_user_cards = pd.read_csv(
-        filepath_or_buffer=r"initialisedDatabase.csv",
-        sep=',',
-        index_col=False,
-        dtype={'cardCode': str,
-               'cardEffort': np.int16,
-               'recoveryDate': np.float64})
+    database_user_cards = pd.read_csv(filepath_or_buffer=r"initialisedDatabase.csv",
+                                      sep=',',
+                                      index_col=False,
+                                      dtype={'cardCode': str,
+                                             'cardEffort': np.int16,
+                                             'recoveryDate': np.float64})
     # sort the database by effort in descending order
     database_user_cards.sort_values(by='cardEffort',
                                     ascending=False,
@@ -305,7 +304,7 @@ async def on_message(effort_message_request):
                                 f"{'-'*((column_lengths[1])+2)}|\n"
         embed_header = embed_title_text + embed_title_underline
 
-        #now generate the string for each entry. To separate entries into pages, we need to find the number of pages
+        # now generate the string for each entry. To separate entries into pages, we need to find the number of pages
         # required.
         embed_pages = math.ceil(len(database)/10)
         table_string_pages = []
@@ -334,21 +333,48 @@ async def on_message(effort_message_request):
     worker_pages = embedGenerator(database_user_cards)
 
     #read in the event database table to get the latest time.
+    effort_update_event_database = pd.read_csv(filepath_or_buffer=r"workerUpdateEvent.csv",
+                                               sep=',',
+                                               index_col=False,
+                                               dtype={'timeRequested': np.float64})
+    # sort the update event in datetime
+    effort_update_event_database.sort_values(by='timeRequested',
+                                             ascending=False,
+                                             inplace=True)
+
+    # now filter for the selected user and get the most recent event for that user. If it's NaN, (i.e. no match), then we take the server message.
+    user_update_time = effort_update_event_database['timeRequested'].where(effort_update_event_database['requestedBy'] == effort_message_request.author.id).iloc[0]
+    user_updated_by = f"<@{effort_message_request.author.id}"
+    if math.isnan(user_update_time):
+        user_update_time = effort_update_event_database['timeRequested'].where(effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
+        user_updated_by = str("me, beep boop")
+
+    # now convert from unix to a standard datetime
+    user_update_time = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+
     # then filter for the selected user. if empty, get server time
-    search_info = 'The last search was run at {time} by {user}.'
+    search_info = f"The last search was run at {user_update_time} by {user_updated_by}.\n\n" \
+                  f"If you'd like me to update your worker list, please react with 🔍."
     # now create an embed.
     # we also want a comment saying when the last search was run.
+    worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n'\
+                           f'```\n{worker_pages[0]}```\n'
     filteredEmbed = discord.Embed(title='Top Worker List',
-                                  description=f'Workers owned by <@{requester_user_id}>, sorted by effort.\n'
-                                              f'```\n{worker_pages[0]}```\n'
-                                              f'{search_info}',
+                                  description=worker_table_message + f'{search_info}',
                                   footer='',
                                   colour=int('FFA500', 16)
                                   )
     # set a variable which determines the page number
     page_number = 1
+
+    # we need to define a variable for the paging of the footer message.
+    if len(database_user_cards) < 10:
+        initial_page_upper_range = len(database_user_cards)
+    else:
+        initial_page_upper_range = page_number * 10
+
     filteredEmbed.set_footer(text=f"Showing workers "
-                                  f"{((page_number-1)*10)+1}-{page_number*10} of {len(database_user_cards)}",
+                                  f"{((page_number-1)*10)+1}-{initial_page_upper_range} of {len(database_user_cards)}",
                              icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
 
     filteredEmbed.set_author(name="Top Worker List", icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
@@ -362,6 +388,7 @@ async def on_message(effort_message_request):
     time.sleep(1)
     await embed_message.add_reaction('🔍')
 
+    updated_embed=None
     # we want to timeout the message after a certain time
     embed_cutoff_time = embed_message.created_at.timestamp() + float(120)
     while float(time.time()) < embed_cutoff_time:
@@ -374,7 +401,7 @@ async def on_message(effort_message_request):
         # we only proceed with the code if the user reacted with the left or right emojis.
         if payload.member.id == requester_user_id:
             if payload.message_id == embed_message.id:
-                if str(payload.emoji) in ['⬅️', '➡️', '🔍']:
+                if str(payload.emoji) in ['⬅️', '➡️', '🔍', '❌']:
                     # if this is met, then we say if its right, then increment the page number by 1
                     # update the content
                     # also update the footer
@@ -385,14 +412,16 @@ async def on_message(effort_message_request):
                         # otherwise we should edit the message to display the previous page of results.
                         else:
                             page_number += 1
+
+                            # to make message editing easier, we save the first two lines into a variable.
+                            worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n'\
+                                                   f'```\n{worker_pages[page_number-1]}```\n'
+
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                  description=f'Workers owned by <@{requester_user_id}>, sorted by effort.\n'
-                                                              f'```\n{worker_pages[page_number-1]}```\n'
-                                                              f'{search_info}',
-                                                  footer='',
-                                                  colour=int('FFA500', 16)
-                                                  )
+                                                          description=worker_table_message + f'{search_info}',
+                                                          footer='',
+                                                          colour=int('FFA500', 16))
                             # the footer needs to show the correct number of workers at the max limit.
                             if page_number == len(worker_pages):
                                 updated_embed.set_footer(text=f"Showing workers "
@@ -413,11 +442,11 @@ async def on_message(effort_message_request):
                         else:
                             # decrease the page_number by 1, then pull in the array corresponding to that page.
                             page_number -= 1
+                            worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n'\
+                                                   f'```\n{worker_pages[page_number - 1]}```\n'
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=f'Workers owned by <@{requester_user_id}>, sorted by effort.\n'
-                                                                      f'```\n{worker_pages[page_number - 1]}```\n'
-                                                                      f'{search_info}',
+                                                          description= worker_table_message + f'{search_info}',
                                                           footer='',
                                                           colour=int('FFA500', 16)
                                                           )
@@ -425,11 +454,24 @@ async def on_message(effort_message_request):
                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
 
-                    # if it's a search, then we can back out and edit the embed
+                    if str(payload.emoji) == '❌':
+                        break
 
-                    await embed_message.edit(embed=updated_embed)
+                    if str(payload.emoji) == '🔍':
+                        # get the description from before, and append the searching message.
+                        current_embed_description = worker_table_message + f'Searching for your cards now... '
+                        search_embed = discord.Embed(title='Top Worker List',
+                                                      description=current_embed_description,
+                                                      footer='',
+                                                      colour=int('ADD8E6', 16)
+                                                      )
+                        await embed_message.edit(embed=search_embed)
 
-    # refactoring
+
+
+
+
+    # refactoring, deprecated code below
 
 
     # now extract the card details
@@ -770,7 +812,16 @@ async def on_message(message):
                 base_message = base_message_main + base_value_message_flavour
                 return base_message
 
-        data = lookupParser(message)
+        try:
+            data = lookupParser(message)
+        except:
+            if message.embeds:
+                message_info = message.embeds[0].description
+            else:
+                message_info = message.content
+            print(f'Lookup bot found an error, it probably received the wrong message. Here is the message:\n'
+                  f'{message.info}\n\n')
+
         if data:
             responseText = baseValueResponse(data)
             response = await message.channel.send(responseText)
@@ -922,7 +973,10 @@ async def on_message(message):
             card_effort_data = []
             recovery_date_data = []
 
-            async for elem in message.channel.history(limit=2000):
+            # define the message limit in a variable
+            message_limit = None
+
+            async for elem in message.channel.history(limit=message_limit):
                 # for each message, look for all messages of format 'kwi <code>'. we can ignore anything with
                 # content that is empty, as these are bot messages.
                 if elem.content:
@@ -966,51 +1020,87 @@ async def on_message(message):
             # - contains the card code
             # - contains the text "card details", or the text "cards carried by"
 
-            #define the array with empty data
-            user_id_data = [None]*len(character_name_data)
-            valid_bot_message_titles = ['Card Details', 'Card Collection']
-            for code in range(len(card_code_data)):
-                async for elem in message.channel.history(limit=2000):
-                    if elem.author.id == KARUTA_BOT:
-                        if elem.embeds:
-                            if card_code_data[code] in elem.embeds[0].description:
+            await message.channel.send(f'Finished searching for codes, I found {len(card_code_data)} codes. Now matching for users...')
+
+            # adding error handling:
+            try:
+                #define the array with empty data
+                user_id_data = [None]*len(character_name_data)
+                valid_bot_message_titles = ['Card Details', 'Card Collection']
+                for code in range(len(card_code_data)):
+                    print(f'Searching for card code: {card_code_data[code]}')
+                    async for elem in message.channel.history(limit=message_limit):
+                        # only proceed if the message was from the bot
+                        if elem.author.id == KARUTA_BOT:
+                            print('Found a message from the bot.')
+                            # only proceed if the message had embeds
+                            if elem.embeds:
+                                print('Found a bot message with embeds.')
+                                # only proceed if the title of the embed matches the ones that we want
                                 if elem.embeds[0].title in valid_bot_message_titles:
-                                    text = elem.embeds[0].description
-                                    # search for the first instance of a user id
-                                    user_id = re.search('@(.+?)>', text)
-                                    user_id_string = user_id.group(1)
-                                    user_id_data[code] = user_id_string
-                                    # once we've made a match, we can break the for loop and move onto the next code.
-                                    break
+                                    print('The bot message is a Card Details or a Card Collection message.')
+                                    # only proceed if the code was found in the embeds
+                                    if card_code_data[code] in elem.embeds[0].description:
+                                        print('Found the card code in the embed content.')
+                                        text = elem.embeds[0].description
+                                        # search for the first instance of a user id
+                                        user_id = re.search('@(.+?)>', text)
+                                        user_id_string = user_id.group(1)
+                                        user_id_data[code] = user_id_string
+                                        print(f'ID found: {user_id_string}\n')
+                                        # once we've made a match, we can break the for loop and move onto the next code.
+                                        break
+                                    else:
+                                        print('Could not find the card code in the bot message\n')
+                                else:
+                                    print('Bot message was not a valid message.\n')
+                            else:
+                                print('The message did not have any embeds\n')
+                        else:
+                            print(f'The author of the message was not the bot\n')
 
-            # turn our array into a database
-            data = {'userId' : user_id_data,
-                    'characterName' : character_name_data,
-                    'cardCode': card_code_data,
-                    'cardEffort' : card_effort_data,
-                    'recoveryDate' : recovery_date_data}
+            except:
+                if elem.embeds:
+                    print(f"Found an error. Here's some info: \n"
+                          f"I was searching for card code = {card_code_data[code]}\n"
+                          f"The message i matched had this text in it = {elem.content}\n"
+                          f"The embed content was as follows = {elem.embeds[0].description}\n"
+                          f"And the title of the embed was {elem.embed[0].title}\n, which I was checking against {valid_bot_message_titles}")
+                else:
+                    print(f"Found an error. Here's some info: \n"
+                          f"I was searching for card code = {card_code_data[code]}\n"
+                          f"The message i matched had this text in it = {elem.content}")
+                await message.channel.send("I broke! There was an error, please let my bot master know.")
 
-            effort_database = pd.DataFrame(data=data)
-            effort_database.to_csv('initialisedDatabase.csv',
-                                   index=False,
-                                   float_format='%.5f')
+            finally:
+                # turn our array into a database
+                data = {'userId' : user_id_data,
+                        'characterName' : character_name_data,
+                        'cardCode': card_code_data,
+                        'cardEffort' : card_effort_data,
+                        'recoveryDate' : recovery_date_data}
 
-            # now write out an informational message
-            finished_time = time.time()
-            elapsed_time = finished_time - start_time
-            await confirmation_message.channel.send(content=f"All done <@{message.author.id}> ! "
-                                                            f"I've recorded {len(user_id_data)} entries, "
-                                                            f"of which {len([x for x in user_id_data if x is not None])} were matched to users. "
-                                                            f"This took me {str(round(elapsed_time, 2))} seconds.")
+                effort_database = pd.DataFrame(data=data)
+                effort_database.to_csv('initialisedDatabase.csv',
+                                       index=False,
+                                       float_format='%.5f')
 
-            # write the update event data to a dataframe, then write it into the database.
-            update_event = pd.DataFrame({'requestedBy': ['Initialiser'],
-                                         'timeRequested' : [finished_time]})
-            update_event.to_csv('workerUpdateEvent.csv',
-                                float_format='%.5f',
-                                mode='a',
-                                index=False,
-                                header=False)
+                # now write out an informational message
+                finished_time = time.time()
+                elapsed_time = finished_time - start_time
+                await confirmation_message.channel.send(content=f"All done <@{message.author.id}> ! "
+                                                                f"I've recorded {len(user_id_data)} codes, "
+                                                                f"of which {len([x for x in user_id_data if x is not None])} were matched to users. "
+                                                                f"This took me {str(round(elapsed_time, 2))} seconds.")
+
+                # write the update event data to a dataframe, then write it into the database.
+                update_event = pd.DataFrame({'requestedBy': ['Initialiser'],
+                                             'timeRequested' : [finished_time]})
+                update_event.to_csv('workerUpdateEvent.csv',
+                                    float_format='%.5f',
+                                    mode='a',
+                                    index=False,
+                                    header=False)
 
 
     if str(payload.emoji) == '❌':
