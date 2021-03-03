@@ -68,7 +68,6 @@ localServer = discord.utils.get(client.guilds, name=GUILD)
 baseValueFlag = True
 
 @bot.event
-# for debugging, prints into console once bot has connected
 async def on_ready():
     print(f'{bot.user.name} has connected to Discord!')
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="pog.helpme"))
@@ -272,6 +271,66 @@ async def on_message(effort_message_request):
     if database_user_cards.empty:
         await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd")
 
+    # define a function that parses out a worker info message
+    # 0     - character
+    # 1     - effort
+    # 2     - healthy | injured for x days
+    # 6     - x, Base, Value
+    # the following are in random order
+    #       - x, <grade>, Wellness
+    #       - x, <grade>, Purity
+    #       - x, <grade>, Quickness
+    #       - x, <grade>, Grabber
+    #       - x, <grade>, Dropper
+    #       - x, <grade>, Style
+    #       - x, <grade>, Toughness
+    def workerInfoParser(lookup_message):
+        # first, check that the message is from the bot.
+        if int(lookup_message.author.id) == KARUTA_BOT:
+            # taking input as the lookup message, if the message does not contain embeds then it's not a lookup message.
+            if lookup_message.embeds:
+                # we now check if this is actually the lookup by searching on text that only appears in
+                # the lookup message.
+                # we assign a variable to the embed description due to python limitations
+                message_text = lookup_message.embeds[0].description
+                # once the message is confirmed to be a lookup message, parse the message by a new line
+                if 'Effort modifiers' in message_text:
+                    worker_stats = message_text.split("\n")
+                    # worker_stats now contains the array of data. To parse out this info, we need different code for
+                    # each line.
+                    for i in range(len(worker_stats)):
+                        # this takes in the first and second elements (character, effort)
+                        if i <= 1:
+                            worker_stats[i] = worker_stats[i].split('·')
+                            # we now remove the asterisks.
+                            worker_stats[i][1] = re.sub('[*]', '', worker_stats[i][1])
+                        # this condition handles the status
+                        if i == 3:
+                            # strip all text except for digits.
+                            # If it's healthy, we'll get a null.
+                            # If it's injured, we'll have a number.
+                            worker_stats[i] = re.sub('\D','',worker_stats[i])
+                        if i >= 6:
+                            # everything past this value can be sorted on the basis of splitting, then turning the
+                            # first index to an integer.
+                            worker_stats[i] = worker_stats[i].split()
+                            worker_stats[i][0] = (re.sub('\D', '', worker_stats[i][0]))
+                        else:
+                            pass
+                        # all the required information is now contained within worker stats.
+
+        return worker_stats
+
+    # we also define a function which will take in a message date and a time period, then return the recovery date
+    # the date is returned in unix time.
+    def recoveryDateCalculator(message_time, injury_days):
+        if injury_days:
+            recovery_date = message_time + timedelta(days=int(injury_days))
+            return recovery_date.replace(tzinfo=timezone.utc).timestamp()
+        # if the variable passed in is null, then we return null too.
+        else:
+            return
+
     # define a function which takes in a database and spits out an array of worker info, with each index corresponding
     # to page of worker details
     def embedGenerator(database):
@@ -350,10 +409,10 @@ async def on_message(effort_message_request):
         user_updated_by = str("me, beep boop")
 
     # now convert from unix to a standard datetime
-    user_update_time = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+    user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
 
     # then filter for the selected user. if empty, get server time
-    search_info = f"The last search was run at {user_update_time} by {user_updated_by}.\n\n" \
+    search_info = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
                   f"If you'd like me to update your worker list, please react with 🔍."
     # now create an embed.
     # we also want a comment saying when the last search was run.
@@ -367,6 +426,8 @@ async def on_message(effort_message_request):
     # set a variable which determines the page number
     page_number = 1
 
+    # define a function for the footer
+
     # we need to define a variable for the paging of the footer message.
     if len(database_user_cards) < 10:
         initial_page_upper_range = len(database_user_cards)
@@ -379,18 +440,19 @@ async def on_message(effort_message_request):
 
     filteredEmbed.set_author(name="Top Worker List", icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
     embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
+
     # this should be refactored into a for loop
     await embed_message.add_reaction('⬅️')
-    time.sleep(1)
+    time.sleep(0.5)
     await embed_message.add_reaction('➡️')
-    time.sleep(1)
+    time.sleep(0.5)
     await embed_message.add_reaction('❌')
-    time.sleep(1)
+    time.sleep(0.5)
     await embed_message.add_reaction('🔍')
-
     updated_embed=None
     # we want to timeout the message after a certain time
     embed_cutoff_time = embed_message.created_at.timestamp() + float(120)
+
     while float(time.time()) < embed_cutoff_time:
         try:
             payload = await bot.wait_for('raw_reaction_add', timeout=embed_cutoff_time)
@@ -459,7 +521,10 @@ async def on_message(effort_message_request):
 
                     if str(payload.emoji) == '🔍':
                         # get the description from before, and append the searching message.
-                        current_embed_description = worker_table_message + f'Searching for your cards now... '
+                        current_embed_description = worker_table_message + f"Searching for your cards now... this might " \
+                                                                           f"take me a while, so I'll send you a new " \
+                                                                           f"message when I'm done (psst this doesn't " \
+                                                                           f"work yet)"
                         search_embed = discord.Embed(title='Top Worker List',
                                                       description=current_embed_description,
                                                       footer='',
@@ -467,11 +532,150 @@ async def on_message(effort_message_request):
                                                       )
                         await embed_message.edit(embed=search_embed)
 
+                        # now run a search for the kwi commands as usual.
+                        character_name_data = []
+                        card_code_data = []
+                        card_effort_data = []
+                        recovery_date_data = []
+
+                        # get the new update time
+                        new_user_update_time = time.time()
+                        print(new_user_update_time)
+
+                        message_array = await effort_message_request.channel.history(after=datetime.utcfromtimestamp(user_update_time),
+                                                                                     limit=None).flatten()
+
+                        message_array.reverse()
+                        print(f'it took {time.time() - new_user_update_time} to generate a list of {len(message_array)} messages')
+                        previous_message = ''
+                        valid_bot_message_titles = ['Card Details', 'Card Collection']
+                        for msg in message_array:
+                            # first, we only want messages from the current user.
+                            if msg.author.id == requester_user_id:
+                                # for each message, look for all messages of format 'kwi <code>'. we can ignore anything with
+                                # content that is empty, as these are bot messages.
+                                if msg.content:
+                                    # if there is a message, then the way to identify if it is a kwi is by splitting it
+                                    # this should produce an array of ['kwi', <cardcode>]
+                                    message_split = msg.content.split()
+                                    if len(message_split) == 2:
+                                        # we now want only messages that contain "kwi".
+                                        if message_split[0] == 'kwi':
+                                            # if we match a kwi, this means the message is of the form kwi <string>.
+                                            # we now check to see if we've matched this code before. If we have, then we skip.
+                                            if message_split[1] not in card_code_data:
+                                                # now that we've matched a new card code, make sure that the previous message
+                                                # contains an embed.
+                                                if previous_message.embeds:
+                                                    # just in case we get the message is incorrect, we will check to see if the embed
+                                                    # content contains worker information.
+                                                    if 'Effort modifiers' in previous_message.embeds[0].description:
+                                                        # now run our parser to pull out the required data. we should refactor this fn to save
+                                                        # on compute time.
+                                                        parsed_message = workerInfoParser(previous_message)
+
+                                                        # before creating the database entry, we generate the recovery date if applicable.
+                                                        recovery_date = recoveryDateCalculator(previous_message.created_at,
+                                                                                               (parsed_message[3]))
+
+                                                        # now add data to each of the list elements. we don't add to the user id column
+                                                        # since anyone can run a kwi
+                                                        character_name_data.append(parsed_message[0][1].strip())
+                                                        card_code_data.append(message_split[1])
+                                                        card_effort_data.append(int(parsed_message[1][1].strip()))
+                                                        recovery_date_data.append(recovery_date)
+                                # if the message does not have content, then it's a bot message and we want to note down the user info
+
+                            # regardless of if it was matched, we now write the message to a variable.
+                            # this allows us to compare previous messages to current ones.
+                            previous_message = msg
+
+                        print(f'found the prelim codes, it has been {time.time() - new_user_update_time} seconds since code started. I found {len(card_code_data)} codes ')
+
+                        # now, search through and verify the codes.
+                        # define the array with empty data
+                        user_id_data = [None] * len(character_name_data)
+                        valid_bot_message_titles = ['Card Details', 'Card Collection']
+                        for code in range(len(card_code_data)):
+                            async for elem in effort_message_request.channel.history(limit=len(message_array)):
+                                # only proceed if the message was from the bot
+                                if elem.author.id == KARUTA_BOT:
+                                    # only proceed if the message had embeds
+                                    if elem.embeds:
+                                        # only proceed if the title of the embed matches the ones that we want
+                                        if elem.embeds[0].title in valid_bot_message_titles:
+                                            # only proceed if the code was found in the embeds
+                                            if card_code_data[code] in elem.embeds[0].description:
+                                                text = elem.embeds[0].description
+                                                # search for the first instance of a user id
+                                                user_id = re.search('@(.+?)>', text)
+                                                user_id_string = user_id.group(1)
+                                                user_id_data[code] = int(user_id_string)
+                                                # once we've made a match, we can break the for loop and move onto the next code.
+                                                break
+
+                        print(f"finished doing extra checks, it's been {time.time() - new_user_update_time} since the code started")
+
+                        data = {'userId': user_id_data,
+                                'characterName' : character_name_data,
+                                'cardCode' : card_code_data,
+                                'cardEffort' : card_effort_data,
+                                'recoveryDate': recovery_date_data
+                                }
+                        print(f' here is the data that we found: \n {data}')
+                        searched_effort_database = pd.DataFrame(data=data,
+                                                                columns=['userId', 'characterName','cardCode','cardEffort','recoveryDate'])
+
+                        print(f'here is the database that I generated after doing the checks: \n {searched_effort_database}')
+
+                        # filter database by requested user
+                        print(f'now comparing DB {user_id_data} -> saved value {requester_user_id}')
+                        searched_effort_database = searched_effort_database[searched_effort_database['userId'] == requester_user_id]
+
+                        print(f'here is the database after filtering on the userId: \n {searched_effort_database}')
+
+                        # sort the database by effort in descending order
+                        searched_effort_database.sort_values(by='cardEffort',
+                                                             ascending=False,
+                                                             inplace=True)
+
+                        print(f'now here is the database sorted by effort: \n {searched_effort_database}')
+                        # generate the array of embed messages
+                        searched_worker_pages = embedGenerator(searched_effort_database)
+                        print(f'here is the text generated {searched_worker_pages}')
+
+                        current_embed_description = f"I found the following codes, are they correct?\n " \
+                                                    f"```{searched_worker_pages[0]}```"
+                        search_embed = discord.Embed(title='Search Results',
+                                                     description=current_embed_description,
+                                                     footer='',
+                                                     colour=int('FFFF00', 16)
+                                                     )
+                        if len(searched_effort_database) < 10:
+                            initial_page_upper_range = len(searched_effort_database)
+                        else:
+                            initial_page_upper_range = page_number * 10
+
+                        page_number = 1
+                        search_embed.set_footer(text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(searched_effort_database)}")
+
+                        print(f'setup done, sending the message now. it has been {time.time() - new_user_update_time} since the code started')
+
+                        search_results_message = await effort_message_request.channel.send(content=f"<@{requester_user_id}>",
+                                                                                           embed=search_embed)
+
+                        await search_results_message .add_reaction('⬅️')
+                        time.sleep(0.5)
+                        await search_results_message .add_reaction('➡️')
+                        time.sleep(0.5)
+                        await search_results_message .add_reaction('❌')
+                        time.sleep(0.5)
+                        await search_results_message .add_reaction('✅')
+                            # we want to compare the results in this validated database and add it to the previous one, which we can then write back into the csv.
+                            # we may want to refactor this to be an append rather than a rewrite.
 
 
-
-
-    # refactoring, deprecated code below
+    # deprecated code below
 
 
     # now extract the card details
@@ -1095,7 +1299,7 @@ async def on_message(message):
 
                 # write the update event data to a dataframe, then write it into the database.
                 update_event = pd.DataFrame({'requestedBy': ['Initialiser'],
-                                             'timeRequested' : [finished_time]})
+                                             'timeRequested' : [start_time]})
                 update_event.to_csv('workerUpdateEvent.csv',
                                     float_format='%.5f',
                                     mode='a',
