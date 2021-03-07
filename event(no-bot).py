@@ -728,7 +728,7 @@ async def on_message(effort_message_request):
                                                             f"Take a look at these and if they're yours, please run" \
                                                             f" a kcharacterinfo command and a kworkerinfo command" \
                                                             f" for those cards, and run me again!" \
-                                                            f"```python{unmatched_worker_pages[0]}```\n" \
+                                                            f"```python\n{unmatched_worker_pages[0]}```\n" \
                                                             f"Here's some stats anyway..."
                                 search_embed.title = "Card Matching Failed"
                                 search_embed.colour = int('800000', 16)
@@ -740,7 +740,7 @@ async def on_message(effort_message_request):
                                                             f"weren't able to verify that they were yours. If they were, " \
                                                             f"please run a kcharacterinfo command and a kworkerinfo command" \
                                                             f"for those cards and run me again! " \
-                                                            f"```python{unmatched_worker_pages[0]}```\n" \
+                                                            f"```python\n{unmatched_worker_pages[0]}```\n" \
                                                             f"Here's some other stats for you..."
                                 search_embed.title = "Cards Updated"
                                 search_embed.colour = int('00FF00', 16)
