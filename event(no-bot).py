@@ -541,6 +541,7 @@ async def on_message(effort_message_request):
                             updated_embed.set_footer(text=f"Showing workers "
                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                        await embed_message.edit(embed=updated_embed)
 
                     if str(payload.emoji) == '❌':
                         break
@@ -644,7 +645,7 @@ async def on_message(effort_message_request):
                                                 break
 
                         print(
-                            f"VERIFIED CODES: {sum(x is not None for x in user_id_data)} out of {len(card_code_data)} codes were verified.")
+                            f"VERIFIED CODES: {sum(x != '' for x in user_id_data)} out of {len(card_code_data)} codes were verified.")
 
                         data = {'userId': user_id_data,
                                 'characterName': character_name_data,
@@ -710,43 +711,49 @@ async def on_message(effort_message_request):
                         # We want to display the data that has no userId.
                         unmatched_worker_pages = embedGenerator(unmatched_worker_database)
 
-                        current_embed_description = f"I've found all your cards! By the way, I found these codes but " \
-                                                    f"weren't able to verify that they were yours. If they were, " \
-                                                    f"please run a kcharacterinfo command and run me again! " \
-                                                    f"```{unmatched_worker_pages[0]}```\n" \
-                                                    f"Here's some other stats for you..."
+                        if unmatched_worker_pages:
+                            current_embed_description = f"I've found all your cards! By the way, I found these codes but " \
+                                                        f"weren't able to verify that they were yours. If they were, " \
+                                                        f"please run a kcharacterinfo command and a kworkerinfo command" \
+                                                        f"for those cards and run me again! " \
+                                                        f"```{unmatched_worker_pages[0]}```\n" \
+                                                        f"Here's some other stats for you..."
+                            if len(unmatched_worker_database) < 10:
+                                initial_page_upper_range = len(unmatched_worker_database)
+                            else:
+                                initial_page_upper_range = page_number * 10
+                            search_embed.set_footer(
+                                text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of "
+                                     f"{len(unmatched_worker_database)}")
+                        else:
+                            current_embed_description = f"Lucky you, looks like I was able to verify that all of the " \
+                                                        f"cards I found belonged to you! Have some stats anyway."
+
+                        page_number = 1
                         search_embed = discord.Embed(title="Cards Updated",
                                                      description=current_embed_description,
                                                      footer='',
-                                                     colour=int('FFFF00', 16)
+                                                     colour=int('00FF00', 16)
                                                      )
                         search_embed.add_field(name="Cards Found",
                                                value=len(card_code_data),
                                                inline=True)
                         search_embed.add_field(name="Cards Verified",
-                                               value=sum(x is not None for x in user_id_data),
-                                               inline=True)                        search_embed.add_field(name="Cards Unverified",
-                                               value=len(card_code_data) - sum(x is not None for x in user_id_data),
+                                               value=sum(x != '' for x in user_id_data),
+                                               inline=True)
+                        search_embed.add_field(name="Cards Unverified",
+                                               value=len(card_code_data) - sum(x != '' for x in user_id_data),
                                                inline=True)
                         search_embed.add_field(name="Time Taken",
                                                value=f"{round(time.time() - new_user_update_time,2)} seconds ")
-                        if len(unmatched_worker_database) < 10:
-                            initial_page_upper_range = len(unmatched_worker_database)
-                        else:
-                            initial_page_upper_range = page_number * 10
-
-                        page_number = 1
-                        search_embed.set_footer(
-                            text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of "
-                                 f"{len(unmatched_worker_database)}")
-
                         search_results_message = await effort_message_request.channel.send(
                             content=f"<@{requester_user_id}>",
                             embed=search_embed)
 
-                        await search_results_message.add_reaction('⬅️')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('➡️')
+                        if unmatched_worker_pages:
+                            await search_results_message.add_reaction('⬅️')
+                            time.sleep(0.5)
+                            await search_results_message.add_reaction('➡️')
 
 
                         # while float(time.time()) < (search_results_message.created_at.timestamp() + float(6000)):
