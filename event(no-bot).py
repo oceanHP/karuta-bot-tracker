@@ -261,7 +261,7 @@ async def on_message(effort_message_request):
     karuta_bot_channel = bot.get_channel(KARUTA_SPAM)
 
     # pull the user ID into a variable
-    requester_user_id = effort_message_request.author.id
+    requester_user_id = int(effort_message_request.author.id)
     # initialise the database from the csv file
     database_cards = pd.read_csv(filepath_or_buffer=r"initialisedDatabase.csv",
                                  sep=',',
@@ -645,7 +645,7 @@ async def on_message(effort_message_request):
                                                 break
 
                         print(
-                            f"VERIFIED CODES: {sum(x != '' for x in user_id_data)} out of {len(card_code_data)} codes were verified.")
+                            f"VERIFIED CODES: {sum(x == requester_user_id for x in user_id_data)} out of {len(card_code_data)} codes were verified.")
 
                         data = {'userId': user_id_data,
                                 'characterName': character_name_data,
@@ -653,7 +653,6 @@ async def on_message(effort_message_request):
                                 'cardEffort': card_effort_data,
                                 'recoveryDate': recovery_date_data
                                 }
-                        print(data)
                         # We now create the searched effort database which we can update the original database with.
                         searched_effort_database = pd.DataFrame(data=data,
                                                                 columns=['userId', 'characterName', 'cardCode',
@@ -662,7 +661,12 @@ async def on_message(effort_message_request):
                         print(f"here is the effort database: \n{searched_effort_database}\n")
 
                         # we save a copy of this with all the unapplicable values
-                        unmatched_worker_database = searched_effort_database[searched_effort_database.userId == '']
+                        unmatched_worker_database = searched_effort_database[~searched_effort_database.userId.isin([requester_user_id])]
+                        print(f"here is the unmatched database: \n {unmatched_worker_database}")
+
+                        unmatched_worker_database.sort_values(by='cardEffort',
+                                                              ascending=False,
+                                                              inplace=True)
 
                         # filter database by requested user
                         searched_effort_database = searched_effort_database[
@@ -712,12 +716,32 @@ async def on_message(effort_message_request):
                         unmatched_worker_pages = embedGenerator(unmatched_worker_database)
 
                         if unmatched_worker_pages:
-                            current_embed_description = f"I've found all your cards! By the way, I found these codes but " \
-                                                        f"weren't able to verify that they were yours. If they were, " \
-                                                        f"please run a kcharacterinfo command and a kworkerinfo command" \
-                                                        f"for those cards and run me again! " \
-                                                        f"```{unmatched_worker_pages[0]}```\n" \
-                                                        f"Here's some other stats for you..."
+                            if sum(x == requester_user_id for x in user_id_data) == 0:
+                                current_embed_description = f"Hmm, looks like I couldn't actually find any cards that" \
+                                                            f" belonged to you... \n" \
+                                                            f"Take a look at these and if they're yours, please run" \
+                                                            f" a kcharacterinfo command and a kworkerinfo command" \
+                                                            f" for those cards, and run me again!" \
+                                                            f"```{unmatched_worker_pages[0]}```\n" \
+                                                            f"Here's some stats anyway..."
+                                search_embed = discord.Embed(title="Card Matching Failed",
+                                                             description=current_embed_description,
+                                                             footer='',
+                                                             colour=int('800000', 16)
+                                                             )
+
+                            else:
+                                current_embed_description = f"I've found all your cards! By the way, I found these codes but " \
+                                                            f"weren't able to verify that they were yours. If they were, " \
+                                                            f"please run a kcharacterinfo command and a kworkerinfo command" \
+                                                            f"for those cards and run me again! " \
+                                                            f"```{unmatched_worker_pages[0]}```\n" \
+                                                            f"Here's some other stats for you..."
+                                search_embed = discord.Embed(title="Cards Updated",
+                                                             description=current_embed_description,
+                                                             footer='',
+                                                             colour=int('00FF00', 16)
+                                                             )
                             if len(unmatched_worker_database) < 10:
                                 initial_page_upper_range = len(unmatched_worker_database)
                             else:
@@ -728,21 +752,21 @@ async def on_message(effort_message_request):
                         else:
                             current_embed_description = f"Lucky you, looks like I was able to verify that all of the " \
                                                         f"cards I found belonged to you! Have some stats anyway."
-
+                            search_embed = discord.Embed(title="Cards Updated",
+                                                         description=current_embed_description,
+                                                         footer='',
+                                                         colour=int('00FF00', 16)
+                                                         )
                         page_number = 1
-                        search_embed = discord.Embed(title="Cards Updated",
-                                                     description=current_embed_description,
-                                                     footer='',
-                                                     colour=int('00FF00', 16)
-                                                     )
+
                         search_embed.add_field(name="Cards Found",
                                                value=len(card_code_data),
                                                inline=True)
                         search_embed.add_field(name="Cards Verified",
-                                               value=sum(x != '' for x in user_id_data),
+                                               value=sum(x == requester_user_id for x in user_id_data),
                                                inline=True)
                         search_embed.add_field(name="Cards Unverified",
-                                               value=len(card_code_data) - sum(x != '' for x in user_id_data),
+                                               value=len(card_code_data) - sum(x == requester_user_id for x in user_id_data),
                                                inline=True)
                         search_embed.add_field(name="Time Taken",
                                                value=f"{round(time.time() - new_user_update_time,2)} seconds ")
