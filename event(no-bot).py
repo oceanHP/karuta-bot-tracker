@@ -623,7 +623,7 @@ async def on_message(effort_message_request):
 
                         # now, search through and verify the codes.
                         # first, define the array with empty data
-                        user_id_data = [None] * len(character_name_data)
+                        user_id_data = [''] * len(character_name_data)
                         valid_bot_message_titles = ['Card Details', 'Card Collection']
                         for code in range(len(card_code_data)):
                             async for elem in effort_message_request.channel.history(limit=len(message_array)):
@@ -652,13 +652,16 @@ async def on_message(effort_message_request):
                                 'cardEffort': card_effort_data,
                                 'recoveryDate': recovery_date_data
                                 }
-
+                        print(data)
                         # We now create the searched effort database which we can update the original database with.
                         searched_effort_database = pd.DataFrame(data=data,
                                                                 columns=['userId', 'characterName', 'cardCode',
                                                                          'cardEffort', 'recoveryDate'])
 
-                        print(searched_effort_database)
+                        print(f"here is the effort database: \n{searched_effort_database}\n")
+
+                        # we save a copy of this with all the unapplicable values
+                        unmatched_worker_database = searched_effort_database[searched_effort_database.userId == '']
 
                         # filter database by requested user
                         searched_effort_database = searched_effort_database[
@@ -705,29 +708,37 @@ async def on_message(effort_message_request):
                                               index=False)
 
                         # We want to display the data that has no userId.
+                        unmatched_worker_pages = embedGenerator(unmatched_worker_database)
 
-                        unmatched_worker_database = searched_effort_database = searched_effort_database[
-                            searched_effort_database['userId'] == None]
-                        print(unmatched_worker_database)
-                        searched_worker_pages = embedGenerator(searched_effort_database)
-
-                        current_embed_description = f"I found these codes but weren't able to verify that they were" \
-                                                    f"yours. If they were, please run a kcharacterinfo command" \
-                                                    f"and run me again! " \
-                                                    f"```placeholder```"
-                        search_embed = discord.Embed(title='Search Results',
+                        current_embed_description = f"I've found all your cards! By the way, I found these codes but " \
+                                                    f"weren't able to verify that they were yours. If they were, " \
+                                                    f"please run a kcharacterinfo command and run me again! " \
+                                                    f"```{unmatched_worker_pages[0]}```\n" \
+                                                    f"Here's some other stats for you..."
+                        search_embed = discord.Embed(title="Cards Updated",
                                                      description=current_embed_description,
                                                      footer='',
                                                      colour=int('FFFF00', 16)
                                                      )
-                        if len(searched_effort_database) < 10:
-                            initial_page_upper_range = len(searched_effort_database)
+                        search_embed.add_field(name="Cards Found",
+                                               value=len(card_code_data),
+                                               inline=True)
+                        search_embed.add_field(name="Cards Verified",
+                                               value=sum(x is not None for x in user_id_data),
+                                               inline=True)                        search_embed.add_field(name="Cards Unverified",
+                                               value=len(card_code_data) - sum(x is not None for x in user_id_data),
+                                               inline=True)
+                        search_embed.add_field(name="Time Taken",
+                                               value=f"{round(time.time() - new_user_update_time,2)} seconds ")
+                        if len(unmatched_worker_database) < 10:
+                            initial_page_upper_range = len(unmatched_worker_database)
                         else:
                             initial_page_upper_range = page_number * 10
 
                         page_number = 1
                         search_embed.set_footer(
-                            text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(searched_effort_database)}")
+                            text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of "
+                                 f"{len(unmatched_worker_database)}")
 
                         search_results_message = await effort_message_request.channel.send(
                             content=f"<@{requester_user_id}>",
@@ -736,10 +747,6 @@ async def on_message(effort_message_request):
                         await search_results_message.add_reaction('⬅️')
                         time.sleep(0.5)
                         await search_results_message.add_reaction('➡️')
-
-
-                        final_message_embed = discord.Embed(description="me done pls run me again")
-                        await search_results_message.edit(embed=final_message_embed)
 
 
                         # while float(time.time()) < (search_results_message.created_at.timestamp() + float(6000)):
