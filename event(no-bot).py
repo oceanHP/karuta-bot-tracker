@@ -411,16 +411,27 @@ async def on_message(effort_message_request):
                                              ascending=False,
                                              inplace=True)
 
-    # now filter for the selected user and get the most recent event for that user. If it's NaN, (i.e. no match), then we take the server message.
-    user_update_time = effort_update_event_database['timeRequested'].where(effort_update_event_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
+    # filter the database by the selected user:
+    filtered_event_time_database = effort_update_event_database.where(
+        effort_update_event_database['requestedBy'] == str(effort_message_request.author.id))
+
+    # now remove all NaNs from the grid.
+    filtered_event_time_database = filtered_event_time_database[filtered_event_time_database["requestedBy"].notnull()]
+
+    # now filter for the selected user and get the most recent event for that user.
+    # If it's NaN, (i.e. no match), then we take the server message.
+    user_update_time = filtered_event_time_database['timeRequested'].where(
+        filtered_event_time_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
     user_updated_by = f"<@{effort_message_request.author.id}>"
+
+    # we now check if we got any errors from the filter. If we get NaN for any values, it means that user has not
+    # generated any entries, so we display the bot events instead.
     if math.isnan(user_update_time):
         # filter database on Initialiser entries.
         effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
         user_update_time = effort_update_event_database['timeRequested'].where(
             effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
         user_updated_by = str("me, beep boop")
-
 
     # now convert from unix to a standard datetime
     user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
@@ -538,8 +549,7 @@ async def on_message(effort_message_request):
                         # get the description from before, and append the searching message.
                         current_embed_description = worker_table_message + f"Searching for your cards now... this might " \
                                                                            f"take me a while, so I'll send you a new " \
-                                                                           f"message when I'm done (psst this doesn't " \
-                                                                           f"work yet)"
+                                                                           f"message when I'm done."
                         search_embed = discord.Embed(title='Top Worker List',
                                                      description=current_embed_description,
                                                      footer='',
@@ -555,7 +565,6 @@ async def on_message(effort_message_request):
 
                         # get the new update time
                         new_user_update_time = time.time()
-                        print(new_user_update_time)
 
                         message_array = await effort_message_request.channel.history(
                             after=datetime.utcfromtimestamp(user_update_time),
@@ -563,7 +572,8 @@ async def on_message(effort_message_request):
 
                         message_array.reverse()
                         print(
-                            f'it took {time.time() - new_user_update_time} to generate a list of {len(message_array)} messages')
+                            f'MESSAGES FOUND: It has been {time.time() - new_user_update_time} seconds since code '
+                            f'started. I found {len(message_array)} messages')
                         previous_message = ''
                         valid_bot_message_titles = ['Card Details', 'Card Collection']
                         for msg in message_array:
@@ -609,10 +619,10 @@ async def on_message(effort_message_request):
                             previous_message = msg
 
                         print(
-                            f'found the prelim codes, it has been {time.time() - new_user_update_time} seconds since code started. I found {len(card_code_data)} codes ')
+                            f'CODES FOUND: It has been {time.time() - new_user_update_time} seconds since code started. I found {len(card_code_data)} codes ')
 
                         # now, search through and verify the codes.
-                        # define the array with empty data
+                        # first, define the array with empty data
                         user_id_data = [None] * len(character_name_data)
                         valid_bot_message_titles = ['Card Details', 'Card Collection']
                         for code in range(len(card_code_data)):
@@ -634,7 +644,7 @@ async def on_message(effort_message_request):
                                                 break
 
                         print(
-                            f"finished doing extra checks, it's been {time.time() - new_user_update_time} since the code started")
+                            f"VERIFIED CODES: {sum(x is not None for x in user_id_data)} out of {len(card_code_data)} codes were verified.")
 
                         data = {'userId': user_id_data,
                                 'characterName': character_name_data,
@@ -642,29 +652,69 @@ async def on_message(effort_message_request):
                                 'cardEffort': card_effort_data,
                                 'recoveryDate': recovery_date_data
                                 }
-                        print(f'codes found')
+
+                        # We now create the searched effort database which we can update the original database with.
                         searched_effort_database = pd.DataFrame(data=data,
                                                                 columns=['userId', 'characterName', 'cardCode',
                                                                          'cardEffort', 'recoveryDate'])
 
-                        print(f'database generated after doing the checks')
+                        print(searched_effort_database)
 
                         # filter database by requested user
                         searched_effort_database = searched_effort_database[
                             searched_effort_database['userId'] == requester_user_id]
-
-                        print(f'database filtering on the userId done')
 
                         # sort the database by effort in descending order
                         searched_effort_database.sort_values(by='cardEffort',
                                                              ascending=False,
                                                              inplace=True)
 
-                        # generate the array of embed messages
+                        for code in searched_effort_database.cardCode.values:
+                            # search the database to see if the card is in there.
+                            if code in database_cards.cardCode.values:
+                                # if the code is present, then we want to append that value in the main database.
+                                # we need to get the index of the card first.
+                                matchIndex = database_cards[database_cards['cardCode'] == code].index[0]
+                                print(f"MATCHED: updating DB entry")
+                                # we now replace the row with the row from our seaarched and filtered database
+                                database_cards.loc[matchIndex] = searched_effort_database.loc[
+                                    searched_effort_database[
+                                        searched_effort_database['cardCode'] == code].index[0]]
+
+                            # if there is no match, then we need to append it to the database, rather than updating.
+                            else:
+                                database_cards.loc[database_cards.index.max() + 1] = \
+                                    searched_effort_database.loc[searched_effort_database[
+                                        searched_effort_database['cardCode'] == code].index[0]]
+                                print(
+                                    f"NO MATCH: adding new entry to DB")
+
+                        # write the update event data to a dataframe, then write it into the database.
+
+                        update_event = pd.DataFrame({'requestedBy': [requester_user_id],
+                                                     'timeRequested': [embed_message.created_at.timestamp()]})
+
+                        update_event.to_csv('workerUpdateEvent.csv',
+                                            float_format='%.5f',
+                                            mode='a',
+                                            index=False,
+                                            header=False)
+
+                        database_cards.to_csv('initialisedDatabase.csv',
+                                              float_format='%.5f',
+                                              index=False)
+
+                        # We want to display the data that has no userId.
+
+                        unmatched_worker_database = searched_effort_database = searched_effort_database[
+                            searched_effort_database['userId'] == None]
+                        print(unmatched_worker_database)
                         searched_worker_pages = embedGenerator(searched_effort_database)
 
-                        current_embed_description = f"I found the following codes, adding them to the database now...\n " \
-                                                    f"```{searched_worker_pages[0]}```"
+                        current_embed_description = f"I found these codes but weren't able to verify that they were" \
+                                                    f"yours. If they were, please run a kcharacterinfo command" \
+                                                    f"and run me again! " \
+                                                    f"```placeholder```"
                         search_embed = discord.Embed(title='Search Results',
                                                      description=current_embed_description,
                                                      footer='',
@@ -686,46 +736,8 @@ async def on_message(effort_message_request):
                         await search_results_message.add_reaction('⬅️')
                         time.sleep(0.5)
                         await search_results_message.add_reaction('➡️')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('❌')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('✅')
-
-                        for code in searched_effort_database.cardCode.values:
-                            # search the database to see if the card is in there.
-                            if code in database_cards.cardCode.values:
-                                # if the code is present, then we want to append that value in the main database.
-                                # we need to get the index of the card first.
-                                matchIndex = database_cards[database_cards['cardCode'] == code].index[0]
-                                print(f"MATCHED\nold value: {database_cards.loc[matchIndex]}"
-                                      f"\n new value: {searched_effort_database[searched_effort_database['cardCode'] == code].index[0]}\n")
-                                # we now replace the row with the row from our seaarched and filtered database
-                                database_cards.loc[matchIndex] = searched_effort_database.loc[
-                                    searched_effort_database[
-                                        searched_effort_database['cardCode'] == code].index[0]]
 
 
-                            # if there is no match, then we need to append it to the database, rather than updating.
-                            else:
-                                database_cards.loc[database_cards.index.max() + 1] = \
-                                    searched_effort_database.loc[searched_effort_database[
-                                        searched_effort_database['cardCode'] == code].index[0]]
-                                print(
-                                    f"NO MATCH: inserting {searched_effort_database.loc[searched_effort_database[searched_effort_database['cardCode'] == code].index[0]]}")
-
-                        # write the update event data to a dataframe, then write it into the database.
-
-                        update_event = pd.DataFrame({'requestedBy': [requester_user_id],
-                                                     'timeRequested': [embed_message.created_at.timestamp()]})
-                        print(f'now adding {update_event} to the DB')
-                        update_event.to_csv('workerUpdateEvent.csv',
-                                            float_format='%.5f',
-                                            mode='a',
-                                            index=False,
-                                            header=False)
-                        database_cards.to_csv('initialisedDatabase.csv',
-                                              float_format='%.5f',
-                                              index=False)
                         final_message_embed = discord.Embed(description="me done pls run me again")
                         await search_results_message.edit(embed=final_message_embed)
 
