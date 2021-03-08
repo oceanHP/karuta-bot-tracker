@@ -697,26 +697,10 @@ async def on_message(effort_message_request):
                                 print(
                                     f"NO MATCH: adding new entry to DB")
 
-                        # write the update event data to a dataframe, then write it into the database.
-
-                        update_event = pd.DataFrame({'requestedBy': [requester_user_id],
-                                                     'timeRequested': [embed_message.created_at.timestamp()]})
-
-                        update_event.to_csv('workerUpdateEvent.csv',
-                                            float_format='%.5f',
-                                            mode='a',
-                                            index=False,
-                                            header=False)
-
-                        database_cards.to_csv('initialisedDatabase.csv',
-                                              float_format='%.5f',
-                                              index=False)
-
                         # We want to display the data that has no userId.
                         unmatched_worker_pages = embedGenerator(unmatched_worker_database)
 
                         # initialise the embed
-                        search_embed = discord.Embed()
 
                         # we now re-initialise our page_number variable for paging on this new message
                         page_number = 1
@@ -730,8 +714,10 @@ async def on_message(effort_message_request):
                                                             f" for those cards, and run me again!" \
                                                             f"```python\n{unmatched_worker_pages[0]}```\n" \
                                                             f"Here's some stats anyway..."
-                                search_embed.title = "Card Matching Failed"
-                                search_embed.colour = int('800000', 16)
+                                search_embed = discord.Embed(title='Card Matching Failed',
+                                                             description='',
+                                                             footer='',
+                                                             colour=int('800000', 16))
 
                             # if there were unmatched workers and we were able to match some of them, then we edit the
                             # description message and change the colour of the embed.
@@ -742,9 +728,10 @@ async def on_message(effort_message_request):
                                                             f"for those cards and run me again! " \
                                                             f"```python\n{unmatched_worker_pages[0]}```\n" \
                                                             f"Here's some other stats for you..."
-                                search_embed.title = "Cards Updated"
-                                search_embed.colour = int('00FF00', 16)
-
+                                search_embed = discord.Embed(title='Cards Updated',
+                                                             description='',
+                                                             footer='',
+                                                             colour=int('00FF00', 16))
                             if len(unmatched_worker_database) < 10:
                                 initial_page_upper_range = len(unmatched_worker_database)
                             else:
@@ -755,8 +742,10 @@ async def on_message(effort_message_request):
                         else:
                             current_embed_description = f"Lucky you, looks like I was able to verify that all of the " \
                                                         f"cards I found belonged to you! Have some stats anyway."
-                            search_embed.title = "Cards Updated",
-                            search_embed.colour = int('00FF00', 16)
+                            search_embed = discord.Embed(title='Cards Updated',
+                                                         description='',
+                                                         footer='',
+                                                         colour=int('00FF00', 16))
 
                         # now we add our constant elements:
                         search_embed.description = current_embed_description
@@ -846,6 +835,20 @@ async def on_message(effort_message_request):
                         #                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
                         #                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
                         #                         await embed_message.edit(embed=updated_embed)
+
+                        # write the update event data to a dataframe, then write it into the database.
+                        update_event = pd.DataFrame({'requestedBy': [requester_user_id],
+                                                     'timeRequested': [embed_message.created_at.timestamp()]})
+
+                        update_event.to_csv('workerUpdateEvent.csv',
+                                            float_format='%.5f',
+                                            mode='a',
+                                            index=False,
+                                            header=False)
+
+                        database_cards.to_csv('initialisedDatabase.csv',
+                                              float_format='%.5f',
+                                              index=False)
 
     await bot.process_commands(effort_message_request)
 
