@@ -278,9 +278,6 @@ async def on_message(effort_message_request):
     # filter the database on the requested user Id.
     database_user_cards = database_user_cards[database_user_cards['userId'] == requester_user_id]
 
-    if database_user_cards.empty:
-        await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd")
-
     # define a function that parses out a worker info message
     # 0     - character
     # 1     - effort
@@ -411,61 +408,72 @@ async def on_message(effort_message_request):
                                              ascending=False,
                                              inplace=True)
 
-    # filter the database by the selected user:
-    filtered_event_time_database = effort_update_event_database.where(
-        effort_update_event_database['requestedBy'] == str(effort_message_request.author.id))
+    if database_user_cards.empty:
+        embed_message = await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd, just hit the search emoji pls")
 
-    # now remove all NaNs from the grid.
-    filtered_event_time_database = filtered_event_time_database[filtered_event_time_database["requestedBy"].notnull()]
-
-    # now filter for the selected user and get the most recent event for that user.
-    # If it's NaN, (i.e. no match), then we take the server message.
-    user_update_time = filtered_event_time_database['timeRequested'].where(
-        filtered_event_time_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
-    user_updated_by = f"<@{effort_message_request.author.id}>"
-
-    # we now check if we got any errors from the filter. If we get NaN for any values, it means that user has not
-    # generated any entries, so we display the bot events instead.
-    if math.isnan(user_update_time):
-        # filter database on Initialiser entries.
-        effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
-        user_update_time = effort_update_event_database['timeRequested'].where(
-            effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
-        user_updated_by = str("me, beep boop")
-
-    # now convert from unix to a standard datetime
-    user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
-
-    # then filter for the selected user. if empty, get server time
-    search_info = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
-                  f"If you'd like me to update your worker list, please react with 🔍."
-    # now create an embed.
-    # we also want a comment saying when the last search was run.
-    worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                           f'```python\n{worker_pages[0]}```\n'
-    filteredEmbed = discord.Embed(title='Top Worker List',
-                                  description=worker_table_message + f'{search_info}',
-                                  footer='',
-                                  colour=int('FFA500', 16)
-                                  )
-    # set a variable which determines the page number
-    page_number = 1
-
-    # define a function for the footer
-
-    # we need to define a variable for the paging of the footer message.
-    if len(database_user_cards) < 10:
-        initial_page_upper_range = len(database_user_cards)
     else:
-        initial_page_upper_range = page_number * 10
+        # filter the database by the selected user:
+        filtered_event_time_database = effort_update_event_database.where(
+            effort_update_event_database['requestedBy'] == str(effort_message_request.author.id))
 
-    filteredEmbed.set_footer(text=f"Showing workers "
-                                  f"{((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(database_user_cards)}",
-                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+        # now remove all NaNs from the grid.
+        filtered_event_time_database = filtered_event_time_database[
+            filtered_event_time_database["requestedBy"].notnull()]
 
-    filteredEmbed.set_author(name="Top Worker List",
-                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-    embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
+        print(filtered_event_time_database)
+
+        # if the grid is empty, this means that we filtered by the selected user and all results were invalid.
+        if filtered_event_time_database.empty:
+            # filter database on Initialiser entries.
+            effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
+            user_update_time = effort_update_event_database['timeRequested'].where(
+                effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
+            user_updated_by = str("me, beep boop")
+
+        # otherwise, we can filter normally:
+        else:
+
+
+            # now filter for the selected user and get the most recent event for that user.
+            # If it's NaN, (i.e. no match), then we take the server message.
+            user_update_time = filtered_event_time_database['timeRequested'].where(
+                filtered_event_time_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
+            user_updated_by = f"<@{effort_message_request.author.id}>"
+
+        # now convert from unix to a standard datetime
+        user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+
+        # then filter for the selected user. if empty, get server time
+        search_info = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
+                      f"If you'd like me to update your worker list, please react with 🔍."
+        # now create an embed.
+        # we also want a comment saying when the last search was run.
+        worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
+                               f'```python\n{worker_pages[0]}```\n'
+        filteredEmbed = discord.Embed(title='Top Worker List',
+                                      description=worker_table_message + f'{search_info}',
+                                      footer='',
+                                      colour=int('FFA500', 16)
+                                      )
+        # set a variable which determines the page number
+        page_number = 1
+
+        # define a function for the footer
+
+        # we need to define a variable for the paging of the footer message.
+        if len(database_user_cards) < 10:
+            initial_page_upper_range = len(database_user_cards)
+        else:
+            initial_page_upper_range = page_number * 10
+
+        filteredEmbed.set_footer(text=f"Showing workers "
+                                      f"{((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(database_user_cards)}",
+                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+        filteredEmbed.set_author(name="Top Worker List",
+                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+        embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
 
     # this should be refactored into a for loop
     await embed_message.add_reaction('⬅️')
@@ -759,6 +767,7 @@ async def on_message(effort_message_request):
                         search_embed.add_field(name="Cards Unverified",
                                                value=len(card_code_data) - sum(x == requester_user_id for x in user_id_data),
                                                inline=True)
+                        
                         search_embed.add_field(name="Time Taken",
                                                value=f"{round(time.time() - new_user_update_time,2)} seconds ")
 
