@@ -845,7 +845,7 @@ async def on_message(message):
                 base_message_main = f'The ◈{lookup_data[4][1]} edition{lookup_data[0][1]} has a base value of around {base_value} at ★★★★. '
 
                 if base_value > worker_cutoff:
-                    if base_value > god_cutoff:
+                    if base_value >= god_cutoff:
                         base_value_message_flavour = f'This is god-tier status! (Nezuko has a value of 84)'
 
                     else:
