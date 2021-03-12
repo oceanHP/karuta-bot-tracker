@@ -420,8 +420,6 @@ async def on_message(effort_message_request):
         filtered_event_time_database = filtered_event_time_database[
             filtered_event_time_database["requestedBy"].notnull()]
 
-        print(filtered_event_time_database)
-
         # if the grid is empty, this means that we filtered by the selected user and all results were invalid.
         if filtered_event_time_database.empty:
             # filter database on Initialiser entries.
@@ -666,11 +664,8 @@ async def on_message(effort_message_request):
                                                                 columns=['userId', 'characterName', 'cardCode',
                                                                          'cardEffort', 'recoveryDate'])
 
-                        print(f"here is the effort database: \n{searched_effort_database}\n")
-
                         # we save a copy of this with all the unapplicable values
                         unmatched_worker_database = searched_effort_database[~searched_effort_database.userId.isin([requester_user_id])]
-                        print(f"here is the unmatched database: \n {unmatched_worker_database}")
 
                         unmatched_worker_database.sort_values(by='cardEffort',
                                                               ascending=False,
@@ -715,13 +710,12 @@ async def on_message(effort_message_request):
 
                         if unmatched_worker_pages:
                             if sum(x == requester_user_id for x in user_id_data) == 0:
-                                current_embed_description = f"Hmm, looks like I couldn't actually find any cards that" \
+                                embed_header_text = f"Hmm, looks like I couldn't actually find any cards that" \
                                                             f" belonged to you... \n" \
                                                             f"Take a look at these and if they're yours, please run" \
                                                             f" a kcharacterinfo command and a kworkerinfo command" \
-                                                            f" for those cards, and run me again!" \
-                                                            f"```python\n{unmatched_worker_pages[0]}```\n" \
-                                                            f"Here's some stats anyway..."
+                                                            f" for those cards, and run me again!"
+
                                 search_embed = discord.Embed(title='Card Matching Failed',
                                                              description='',
                                                              footer='',
@@ -730,18 +724,24 @@ async def on_message(effort_message_request):
                             # if there were unmatched workers and we were able to match some of them, then we edit the
                             # description message and change the colour of the embed.
                             else:
-                                current_embed_description = f"I've found all your cards! By the way, I found these codes but " \
+                                embed_header_text = f"I've found all your cards! By the way, I found these codes but " \
                                                             f"weren't able to verify that they were yours. If they were, " \
                                                             f"please run a kcharacterinfo command and a kworkerinfo command" \
-                                                            f"for those cards and run me again! " \
+                                                            f" for those cards and run me again! " \
                                                             f"```python\n{unmatched_worker_pages[0]}```\n" \
                                                             f"Here's some other stats for you..."
                                 search_embed = discord.Embed(title='Cards Updated',
                                                              description='',
                                                              footer='',
                                                              colour=int('00FF00', 16))
+
+                            current_embed_description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[0]}```\n" \
+                                                        f"Here's some stats anyway..."
+
                             if len(unmatched_worker_database) < 10:
                                 initial_page_upper_range = len(unmatched_worker_database)
+
                             else:
                                 initial_page_upper_range = page_number * 10
                             search_embed.set_footer(
@@ -775,76 +775,6 @@ async def on_message(effort_message_request):
                             content=f"<@{requester_user_id}>",
                             embed=search_embed)
 
-                        if len(unmatched_worker_pages) >= 2:
-
-                            await search_results_message.add_reaction('⬅️')
-                            time.sleep(0.5)
-                            await search_results_message.add_reaction('➡️')
-                        #     # before continuing, need to find a more elegant way of creating this embed
-                        #     while float(time.time()) < search_results_message.created_at.timestamp()+float(120):
-                        #         try:
-                        #             payload = await bot.wait_for('raw_reaction_add', timeout=120)
-                        #         # we go down this route if there was no reaction added
-                        #         except asyncio.exceptions.TimeoutError:
-                        #             print('ending workflow')
-                        #             return
-                        #         # we only proceed with the code if the user reacted with the right emojis.
-                        #         if payload.member.id == requester_user_id:
-                        #             if payload.message_id == embed_message.id:
-                        #                 if str(payload.emoji) in ['⬅️', '➡️', '🔍', '❌']:
-                        #                     # if this is met, then we say if its right, then increment the page number by 1
-                        #                     # update the content
-                        #                     # also update the footer
-                        #                     if str(payload.emoji) == '➡️':
-                        #                         # if the page number is equal to the max number of pages, we cannot go any further forward.
-                        #                         if page_number == len(unmatched_worker_pages):
-                        #                             pass
-                        #                         # otherwise we should edit the message to display the previous page of results.
-                        #                         else:
-                        #                             page_number += 1
-                        #
-                        #                             # to make message editing easier, we save the first two lines into a variable.
-                        #                             worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                        #                                                    f'```\n{worker_pages[page_number - 1]}```\n'
-                        #
-                        #                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
-                        #                             updated_embed = discord.Embed(title='Top Worker List',
-                        #                                                           description=worker_table_message + f'{search_info}',
-                        #                                                           footer='',
-                        #                                                           colour=int('FFA500', 16))
-                        #                             # the footer needs to show the correct number of workers at the max limit.
-                        #                             if page_number == len(worker_pages):
-                        #                                 updated_embed.set_footer(text=f"Showing workers "
-                        #                                                               f"{((page_number - 1) * 10) + 1}-{len(database_user_cards)} of {len(database_user_cards)}",
-                        #                                                          icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-                        #                             else:
-                        #                                 updated_embed.set_footer(text=f"Showing workers "
-                        #                                                               f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
-                        #                                                          icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-                        #
-                        #                             await embed_message.edit(embed=updated_embed)
-                        #
-                        #                     if str(payload.emoji) == '⬅️':
-                        #                         # if the page_number is 1, we cannot go any further back. this is invalid so we do nothing
-                        #                         if page_number == 1:
-                        #                             pass
-                        #                         # otherwise we should edit the message to display the previous page of results.
-                        #                         else:
-                        #                             # decrease the page_number by 1, then pull in the array corresponding to that page.
-                        #                             page_number -= 1
-                        #                             worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                        #                                                    f'```\n{worker_pages[page_number - 1]}```\n'
-                        #                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
-                        #                             updated_embed = discord.Embed(title='Top Worker List',
-                        #                                                           description=worker_table_message + f'{search_info}',
-                        #                                                           footer='',
-                        #                                                           colour=int('FFA500', 16)
-                        #                                                           )
-                        #                             updated_embed.set_footer(text=f"Showing workers "
-                        #                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
-                        #                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-                        #                         await embed_message.edit(embed=updated_embed)
-
                         # write the update event data to a dataframe, then write it into the database.
                         update_event = pd.DataFrame({'requestedBy': [requester_user_id],
                                                      'timeRequested': [embed_message.created_at.timestamp()]})
@@ -858,6 +788,74 @@ async def on_message(effort_message_request):
                         database_cards.to_csv('initialisedDatabase.csv',
                                               float_format='%.5f',
                                               index=False)
+
+                        # initialise the page number variable for this message
+                        search_embed_page_number = 1
+
+
+                        if len(unmatched_worker_pages) >= 2:
+                            # set a variable to the amount of time we want the user to be able to browse the pages
+                            user_paging_duration = float(120)
+                            await search_results_message.add_reaction('⬅️')
+                            time.sleep(0.5)
+                            await search_results_message.add_reaction('➡️')
+                            while float(time.time()) < search_results_message.created_at.timestamp() + user_paging_duration:
+
+                                try:
+                                    payload = await bot.wait_for('raw_reaction_add', timeout=user_paging_duration)
+                                # we go down this route if there was no reaction added
+                                except asyncio.exceptions.TimeoutError:
+                                    print('ending workflow')
+                                    return
+                                # we only proceed with the code if the user reacted with the right emojis.
+                                print('found a payload')
+                                if payload.member.id == requester_user_id:
+                                    print(f'payload is from the requested user')
+                                    if payload.message_id == search_results_message.id:
+                                        if str(payload.emoji) in ['⬅️', '➡️']:
+                                            # if this is met, then we say if its right, then increment the page number by 1
+                                            # update the content
+                                            # also update the footer
+                                            if str(payload.emoji) == '➡️':
+                                                # if the page number is equal to the max number of pages, we cannot go any further forward.
+                                                if search_embed_page_number == len(unmatched_worker_pages):
+                                                    pass
+                                                # otherwise we should edit the message to display the previous page of results.
+                                                else:
+                                                    search_embed_page_number += 1
+
+                                                    # to make message editing easier, we save the first two lines into a variable.
+                                                    search_embed.description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[search_embed_page_number-1]}```\n" \
+                                                        f"Here's some stats anyway..."
+
+                                                    # the footer needs to show the correct number of workers at the max limit.
+                                                    if search_embed_page_number == len(unmatched_worker_pages):
+                                                        search_embed.set_footer(text=f"Showing workers "
+                                                                                      f"{((search_embed_page_number - 1) * 10) + 1}-{len(unmatched_worker_database)} of {len(unmatched_worker_database)}",
+                                                                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                                                    else:
+                                                        search_embed.set_footer(text=f"Showing workers "
+                                                                                      f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
+                                                                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+                                            if str(payload.emoji) == '⬅️':
+                                                # if the page_number is 1, we cannot go any further back. this is invalid so we do nothing
+                                                if search_embed_page_number == 1:
+                                                    pass
+                                                # otherwise we should edit the message to display the previous page of results.
+                                                else:
+                                                    # decrease the page_number by 1, then pull in the array corresponding to that page.
+                                                    search_embed_page_number -= 1
+                                                    search_embed.description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[search_embed_page_number-1]}```\n" \
+                                                        f"Here's some stats anyway..."
+                                                    search_embed.set_footer(text=f"Showing workers "
+                                                                                  f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
+                                                                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                                            await search_results_message.edit(embed=search_embed)
+
+
 
     await bot.process_commands(effort_message_request)
 
