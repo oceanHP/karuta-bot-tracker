@@ -16,4 +16,13 @@ jobs:
           key: deps1-{{ .Branch }}-{{ checksum "requirements.txt" }}
           paths:
             - "venv"
-            
+      # run the bot code
+      - run:
+          command: |
+            . venv/bin/activate
+            python event(no-bot).py test
+      - store_artifacts:
+          path: test-reports/
+          destination: tr1
+      - store_test_results:
+          path: test-reports/
