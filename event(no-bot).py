@@ -340,7 +340,7 @@ async def on_message(effort_message_request):
 
     # define a function which takes in a database and spits out an array of worker info, with each index corresponding
     # to page of worker details
-    def embedGenerator(database):
+    def workerInfoGenerator(database):
         # go through each column and find the max element of each column
         # define an array which contains the length of each
         # for ease of formatting, we need the lengths of all the data we are going to input.
@@ -396,7 +396,7 @@ async def on_message(effort_message_request):
             table_string_pages.insert(page, embed_header + table_string_page_content)
         return table_string_pages
 
-    worker_pages = embedGenerator(database_user_cards)
+    worker_pages = workerInfoGenerator(database_user_cards)
 
     # read in the event database table to get the latest time.
     effort_update_event_database = pd.read_csv(filepath_or_buffer=r"workerUpdateEvent.csv",
@@ -421,35 +421,39 @@ async def on_message(effort_message_request):
             filtered_event_time_database["requestedBy"].notnull()]
 
         # if the grid is empty, this means that we filtered by the selected user and all results were invalid.
+        # in this scenario, we want to search for any entries that were done manually (by the bot)
         if filtered_event_time_database.empty:
             # filter database on Initialiser entries.
             effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
             user_update_time = effort_update_event_database['timeRequested'].where(
                 effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
+
+            # convert this unix time to a string that front end users can understand
+            user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
             user_updated_by = str("me, beep boop")
 
+            # we can also define what message we would like to appear here
+            search_prompt_header_text = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
+                                        f"If you'd like me to update your worker list, please react with 🔍."
         # otherwise, we can filter normally:
         else:
-
-
-            # now filter for the selected user and get the most recent event for that user.
-            # If it's NaN, (i.e. no match), then we take the server message.
+            # filter for the selected user and get the most recent event for that user.
             user_update_time = filtered_event_time_database['timeRequested'].where(
                 filtered_event_time_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
-            user_updated_by = f"<@{effort_message_request.author.id}>"
+            # convert this unix time to a string that front end users can understand
+            user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
 
-        # now convert from unix to a standard datetime
-        user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+            search_prompt_header_text = f"You last updated your workers on {user_update_time_text}.\n \n"
 
-        # then filter for the selected user. if empty, get server time
-        search_info = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
-                      f"If you'd like me to update your worker list, please react with 🔍."
+        search_description_message = search_prompt_header_text + f"If you'd like me to update your worker list," \
+                                                                 f" please react with 🔍."
+
         # now create an embed.
         # we also want a comment saying when the last search was run.
         worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
                                f'```python\n{worker_pages[0]}```\n'
         filteredEmbed = discord.Embed(title='Top Worker List',
-                                      description=worker_table_message + f'{search_info}',
+                                      description=worker_table_message + f'{search_description_message}',
                                       footer='',
                                       colour=int('FFA500', 16)
                                       )
@@ -513,7 +517,7 @@ async def on_message(effort_message_request):
 
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_info}',
+                                                          description=worker_table_message + f'{search_description_message}',
                                                           footer='',
                                                           colour=int('FFA500', 16))
                             # the footer needs to show the correct number of workers at the max limit.
@@ -540,7 +544,7 @@ async def on_message(effort_message_request):
                                                    f'```python\n{worker_pages[page_number - 1]}```\n'
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_info}',
+                                                          description=worker_table_message + f'{search_prompt_header_text}',
                                                           footer='',
                                                           colour=int('FFA500', 16)
                                                           )
@@ -701,7 +705,7 @@ async def on_message(effort_message_request):
                                     f"NO MATCH: adding new entry to DB")
 
                         # We want to display the data that has no userId.
-                        unmatched_worker_pages = embedGenerator(unmatched_worker_database)
+                        unmatched_worker_pages = workerInfoGenerator(unmatched_worker_database)
 
                         # initialise the embed
 
@@ -852,11 +856,6 @@ async def on_message(effort_message_request):
                                                                                   f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
                                                                              icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
                                             await search_results_message.edit(embed=search_embed)
-
-
-
-    await bot.process_commands(effort_message_request)
-
 
 @bot.event
 # this is to find the klu
