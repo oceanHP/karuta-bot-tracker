@@ -727,9 +727,7 @@ async def on_message(effort_message_request):
                                 embed_header_text = f"I've found all your cards! By the way, I found these codes but " \
                                                             f"weren't able to verify that they were yours. If they were, " \
                                                             f"please run a kcharacterinfo command and a kworkerinfo command" \
-                                                            f" for those cards and run me again! " \
-                                                            f"```python\n{unmatched_worker_pages[0]}```\n" \
-                                                            f"Here's some other stats for you..."
+                                                            f" for those cards and run me again! "
                                 search_embed = discord.Embed(title='Cards Updated',
                                                              description='',
                                                              footer='',
@@ -737,7 +735,7 @@ async def on_message(effort_message_request):
 
                             current_embed_description = embed_header_text + \
                                                         f"```python\n{unmatched_worker_pages[0]}```\n" \
-                                                        f"Here's some stats anyway..."
+                                                        f"Here's some stats:"
 
                             if len(unmatched_worker_database) < 10:
                                 initial_page_upper_range = len(unmatched_worker_database)
