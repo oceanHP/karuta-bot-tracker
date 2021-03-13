@@ -5,8 +5,9 @@
 
 # Git
 - always pull from master when developing code. The following code changes the local branch to master, then pulls all the files from the remote.
-`git checkout master`
-` git pull`
+`git checkout main`
+
+`git pull`
 
 - after that, create a new branch. We will use branch naming in the format of the issue code on Git, such as issue #24 -> branch name = #24
 `git checkout -b #XX`
