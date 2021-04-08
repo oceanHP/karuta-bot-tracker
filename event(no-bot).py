@@ -452,51 +452,50 @@ async def on_message(effort_message_request):
                                                                  f"If you want to see your injured workers, " \
                                                                  f"please react with  🏥."
 
-        # create a generic function which generates an embed and the subsequent pages. this assumes that we have
-        # generated the array of pages to be displayed
-        def embedGenerator(embed_message_pages, embed_table_header, embed_table_footer, embed_title, embed_message_footer, embed_colour):
-            # embed_message_pages = the array of pages to be displayed
-            # embed_table_header = the text to be displayed above the embed
-            # embed_table_footer = the text to be displayed below the embed
-            # embed_title = title of the embed
-            # embed_message_footer = footer message of the embed (not the message)
-            # embed_colour = hex code of the colour to be used
-            embed_object = discord.Embed(title=embed_title,
-                                         description = f"{embed_table_header}\n"
-                                                       f"```python\n{embed_message_pages[0]}```\n"
-                                                       f"{embed_table_footer}",
-                                         footer=embed_message_footer,
-                                         colour=int(embed_colour, 16))
-            return embed_object
+    # create a generic function which generates an embed and the subsequent pages. this assumes that we have
+    # generated the array of pages to be displayed
+    def embedGenerator(input_database, embed_message_pages, embed_table_header, embed_table_footer, embed_title, embed_message_footer, embed_colour, embed_page_number):
+        # embed_message_pages = the array of pages to be displayed
+        # embed_table_header = the text to be displayed above the embed
+        # embed_table_footer = the text to be displayed below the embed
+        # embed_title = title of the embed
+        # embed_message_footer = footer message of the embed (not the message)
+        # embed_colour = hex code of the colour to be used
+        # embed_page_number = determines paging of the embed, set to 1 when initialised
+        # the output is specified into a list:
+        # 0 - the embed object
+        # 1 - the embed pages generated from the database
+        # 2 - the page_number that the embed is currently on
+        embed_object = discord.Embed(title=embed_title,
+                                     description = f"{embed_table_header}\n"
+                                                   f"```python\n{embed_message_pages[(embed_page_number - 1)]}```\n"
+                                                   f"{embed_table_footer}",
+                                     footer=embed_message_footer,
+                                     colour=int(embed_colour, 16))
 
-        await effort_message_request.channel.send(embed=embedGenerator(worker_pages, 'test', 'test', 'test', 'test', 'FFA500'))
-
-        # now create an embed.
-        # we also want a comment saying when the last search was run.
-        worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                               f'```python\n{worker_pages[0]}```\n'
-        filteredEmbed = discord.Embed(title='Top Worker List',
-                                      description=worker_table_message + f'{search_description_message}',
-                                      footer='',
-                                      colour=int('FFA500', 16)
-                                      )
-        # set a variable which determines the page number
-        page_number = 1
-
-        # we need to define a variable for the paging of the footer message.
-        if len(database_user_cards) < 10:
-            initial_page_upper_range = len(database_user_cards)
+        if embed_page_number == len(embed_message_pages):
+            embed_object.set_footer(text=f"Showing workers "
+                                         f"{((embed_page_number - 1) * 10) + 1}-{len(database_user_cards)} of {len(database_user_cards)}")
         else:
-            initial_page_upper_range = page_number * 10
+            embed_object.set_footer(text=f"Showing workers "
+                                         f"{((embed_page_number - 1) * 10) + 1}-{embed_page_number * 10} of {len(database_user_cards)}")
 
-        filteredEmbed.set_footer(text=f"Showing workers "
-                                      f"{((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(database_user_cards)}",
-                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+        return [embed_object, embed_message_pages, embed_page_number, input_database]
 
-        filteredEmbed.set_author(name="Top Worker List",
-                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+    initial_effort_table_header = f'Workers owned by <@{requester_user_id}>, sorted by effort.'
+    initial_effort_embed_title ='Top Worker List'
+    initial_effort_embed_colour = 'FFA500'
 
-        embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
+    embed_outputs = embedGenerator(input_database=database_user_cards,
+                                   embed_message_pages=worker_pages,
+                                   embed_table_header=initial_effort_table_header,
+                                   embed_table_footer=search_description_message,
+                                   embed_title=initial_effort_embed_title,
+                                   embed_message_footer='',
+                                   embed_colour=initial_effort_embed_colour,
+                                   embed_page_number = 1)
+
+    embed_message = await effort_message_request.channel.send(embed=embed_outputs[0])
 
     # this should be refactored into a for loop
     await embed_message.add_reaction('⬅️')
@@ -526,53 +525,43 @@ async def on_message(effort_message_request):
                     # also update the footer
                     if str(payload.emoji) == '➡️':
                         # if the page number is equal to the max number of pages, we cannot go any further forward.
-                        if page_number == len(worker_pages):
+                        if embed_outputs[2] == len(embed_outputs[1]):
                             pass
                         # otherwise we should edit the message to display the previous page of results.
                         else:
-                            page_number += 1
+                            embed_outputs[2] += 1
 
                             # to make message editing easier, we save the first two lines into a variable.
-                            worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                                                   f'```python\n{worker_pages[page_number - 1]}```\n'
+                            embed_outputs = embedGenerator(input_database=database_user_cards,
+                                                           embed_message_pages=embed_outputs[1],
+                                                           embed_table_header=initial_effort_table_header,
+                                                           embed_table_footer=search_description_message,
+                                                           embed_title=initial_effort_embed_title,
+                                                           embed_message_footer='',
+                                                           embed_colour=initial_effort_embed_colour,
+                                                           embed_page_number=embed_outputs[2])
 
-                            # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
-                            updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_description_message}',
-                                                          footer='',
-                                                          colour=int('FFA500', 16))
-                            # the footer needs to show the correct number of workers at the max limit.
-                            if page_number == len(worker_pages):
-                                updated_embed.set_footer(text=f"Showing workers "
-                                                              f"{((page_number - 1) * 10) + 1}-{len(database_user_cards)} of {len(database_user_cards)}",
-                                                         icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-                            else:
-                                updated_embed.set_footer(text=f"Showing workers "
-                                                              f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
-                                                         icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-
-                            await embed_message.edit(embed=updated_embed)
+                            await embed_message.edit(embed=embed_outputs[0])
 
                     if str(payload.emoji) == '⬅️':
                         # if the page_number is 1, we cannot go any further back. this is invalid so we do nothing
-                        if page_number == 1:
+                        if embed_outputs[2] == 1:
                             pass
                         # otherwise we should edit the message to display the previous page of results.
                         else:
                             # decrease the page_number by 1, then pull in the array corresponding to that page.
-                            page_number -= 1
-                            worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                                                   f'```python\n{worker_pages[page_number - 1]}```\n'
-                            # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
-                            updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_prompt_header_text}',
-                                                          footer='',
-                                                          colour=int('FFA500', 16)
-                                                          )
-                            updated_embed.set_footer(text=f"Showing workers "
-                                                          f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
-                                                     icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-                        await embed_message.edit(embed=updated_embed)
+                            embed_outputs[2] -= 1
+
+                            embed_outputs = embedGenerator(input_database=database_user_cards,
+                                                           embed_message_pages=embed_outputs[1],
+                                                           embed_table_header=initial_effort_table_header,
+                                                           embed_table_footer=search_description_message,
+                                                           embed_title=initial_effort_embed_title,
+                                                           embed_message_footer='',
+                                                           embed_colour=initial_effort_embed_colour,
+                                                           embed_page_number=embed_outputs[2])
+
+                            await embed_message.edit(embed=embed_outputs[0])
 
                     if str(payload.emoji) == '🔍':
                         # get the description from before, and append the searching message.
@@ -876,7 +865,8 @@ async def on_message(effort_message_request):
                                             await search_results_message.edit(embed=search_embed)
 
                     if str(payload.emoji) == '🏥':
-                        print("success")
+                        # we want this to switch back and forth between the injured and injured databases.
+                        if embed_outputs[1] =
 
 
 @bot.event
