@@ -270,6 +270,7 @@ async def on_message(effort_message_request):
                                  dtype={'cardCode': str,
                                         'cardEffort': np.int16,
                                         'recoveryDate': np.float64})
+
     # sort the database by effort in descending order
     database_user_cards = database_cards
     database_user_cards.sort_values(by='cardEffort',
@@ -349,14 +350,14 @@ async def on_message(effort_message_request):
                           len(str('Character Name')),
                           len(str('CardCode')),
                           len(str('Effort')),
-                          len(str('Last Updated'))]
+                          len(str('Injury Date'))]
         for j in range(len(database.columns)):
             # in each column, iterate through each row and find the length of each element, keeping the longest element
             # 0     - user Id
             # 1     - character name
             # 2     - card code
             # 3     - effort
-            # 4     - last updated
+            # 4     - injury date
             for i in range(len(database)):
                 if column_lengths[j] < len(str(database.iloc[i, j])):
                     column_lengths[j] = len(str(database.iloc[i, j]))
@@ -397,7 +398,88 @@ async def on_message(effort_message_request):
             table_string_pages.insert(page, embed_header + table_string_page_content)
         return table_string_pages
 
+    # to generate the injured worker pages, generate the database to use as the input
+    database_injured = database_cards
+
+    # filter out to only the requested user's cards
+    database_injured = database_injured[database_injured['userId'] == requester_user_id]
+
+    # now, sort by recovery date instead of effort.
+    database_injured.sort_values(by='recoveryDate',
+                                 ascending=False,
+                                 inplace=True)
+
+    # filter out all healthy cards:
+    database_injured_filtered = database_injured.loc[database_injured.recoveryDate.notnull()]
+
+    # convert unix times to datetimes
+    database_injured_filtered['recoveryDate'] = pd.to_datetime(database_injured_filtered['recoveryDate'], unit='s')
+    database_injured_filtered['recoveryDate'] = database_injured_filtered['recoveryDate'].dt.strftime("%d/%m/%y")
+
+    # define a function which takes in a database and spits out an array of worker info, with each index corresponding
+    # to page of worker details.
+    def injuredWorkerInfoGenerator(database_filtered):
+        # go through each column and find the max element of each column
+        # define an array which contains the length of each
+        # for ease of formatting, we need the lengths of all the data we are going to input.
+        column_lengths = [len(str('User ID')),
+                          len(str('Character Name')),
+                          len(str('CardCode')),
+                          len(str('Effort')),
+                          len(str('Recovery Date'))]
+        for j in range(len(database_filtered.columns)):
+            # in each column, iterate through each row and find the length of each element, keeping the longest element
+            # 0     - user Id
+            # 1     - character name
+            # 2     - card code
+            # 3     - effort
+            # 4     - injury date
+            for i in range(len(database_filtered)):
+                if column_lengths[j] < len(str(database_filtered.iloc[i, j])):
+                    column_lengths[j] = len(str(database_filtered.iloc[i, j]))
+
+        # column_lengths now contains the maximum length of each string.
+        # now, we define an array which contains the titles that we want
+        embed_title_text = f"| {'Effort'.ljust(column_lengths[3])} |" \
+                           f" {'CardCode'.center(column_lengths[2])} |" \
+                           f" {'Character'.ljust(column_lengths[1])} |" \
+                           f" {'Recovery Date'.ljust(column_lengths[4])} |\n"
+        embed_title_underline = f"|{'-' * ((column_lengths[3]) + 2)}|" \
+                                f"{'-' * ((column_lengths[2]) + 2)}|" \
+                                f"{'-' * ((column_lengths[1]) + 2)}|" \
+                                f"{'-' * ((column_lengths[4]) + 2)}|\n"
+        embed_header = embed_title_text + embed_title_underline
+
+        # now generate the string for each entry. To separate entries into pages, we need to find the number of pages
+        # required.
+        embed_pages = math.ceil(len(database_filtered) / 10)
+        table_string_pages = []
+        # iterate through each page. because loop indices initiate at 0, we remove a 1 from the number of pages.
+        for page in range(embed_pages):
+            # on each page, we only want 10 entries except for on the final page, so do a check for that.
+            # if it's not the final page, we want to iterate from the 0th to the 9th element.
+            table_string_page_content = ''
+            if page != (embed_pages - 1):
+                # we add 1 to page because for loops initialise the index at 1
+                for i in range((page * 10), ((page + 1) * 10)):
+                    table_string = f"| {str(database_filtered.iloc[i, 3]).rjust(column_lengths[3])} |" \
+                                   f" {str(database_filtered.iloc[i, 2]).center(column_lengths[2])} |" \
+                                   f" {str(database_filtered.iloc[i, 1]).ljust(column_lengths[1])} |" \
+                                   f" {str(database_filtered.iloc[i, 4]).ljust(column_lengths[4])} |\n"
+                    table_string_page_content = table_string_page_content + table_string
+            # if not, then we're on the final page.
+            elif page == (embed_pages - 1):
+                for i in range((page * 10), len(database_filtered)):
+                    table_string = f"| {str(database_filtered.iloc[i, 3]).rjust(column_lengths[3])} |" \
+                                   f" {str(database_filtered.iloc[i, 2]).center(column_lengths[2])} |" \
+                                   f" {str(database_filtered.iloc[i, 1]).ljust(column_lengths[1])} |" \
+                                   f" {str(database_filtered.iloc[i, 4]).ljust(column_lengths[4])} |\n"
+                    table_string_page_content = table_string_page_content + table_string
+            table_string_pages.insert(page, embed_header + table_string_page_content)
+        return table_string_pages
+
     worker_pages = workerInfoGenerator(database_user_cards)
+    injured_worker_pages = injuredWorkerInfoGenerator(database_injured_filtered)
 
     # read in the event database table to get the latest time.
     effort_update_event_database = pd.read_csv(filepath_or_buffer=r"workerUpdateEvent.csv",
@@ -466,6 +548,7 @@ async def on_message(effort_message_request):
         # 0 - the embed object
         # 1 - the embed pages generated from the database
         # 2 - the page_number that the embed is currently on
+        # 3 - database used
         embed_object = discord.Embed(title=embed_title,
                                      description = f"{embed_table_header}\n"
                                                    f"```python\n{embed_message_pages[(embed_page_number - 1)]}```\n"
@@ -475,16 +558,26 @@ async def on_message(effort_message_request):
 
         if embed_page_number == len(embed_message_pages):
             embed_object.set_footer(text=f"Showing workers "
-                                         f"{((embed_page_number - 1) * 10) + 1}-{len(database_user_cards)} of {len(database_user_cards)}")
+                                         f"{((embed_page_number - 1) * 10) + 1}-{len(input_database)} of {len(input_database)}")
         else:
             embed_object.set_footer(text=f"Showing workers "
-                                         f"{((embed_page_number - 1) * 10) + 1}-{embed_page_number * 10} of {len(database_user_cards)}")
+                                         f"{((embed_page_number - 1) * 10) + 1}-{embed_page_number * 10} of {len(input_database)}")
 
         return [embed_object, embed_message_pages, embed_page_number, input_database]
 
     initial_effort_table_header = f'Workers owned by <@{requester_user_id}>, sorted by effort.'
     initial_effort_embed_title ='Top Worker List'
     initial_effort_embed_colour = 'FFA500'
+
+    injured_effort_table_header = f'Injured workers owned by <@{requester_user_id}>, sorted by effort.'
+    injured_effort_embed_title = 'The Hospital'
+    injured_effort_embed_colour = 'FF0000'
+    injured_effort_message_footer = f"If you'd like me to update your worker list, please react with 🔍. \n" \
+                                    f"If you'd like to leave the hospital, please react with 🏥 again. "
+
+    search_embed_footer = f"Searching for your cards now... this might take me a while, so I'll send you a " \
+                          f"new message when I'm done."
+    search_embed_colour = 'ADD8E6'
 
     embed_outputs = embedGenerator(input_database=database_user_cards,
                                    embed_message_pages=worker_pages,
@@ -535,7 +628,7 @@ async def on_message(effort_message_request):
                             embed_outputs = embedGenerator(input_database=database_user_cards,
                                                            embed_message_pages=embed_outputs[1],
                                                            embed_table_header=initial_effort_table_header,
-                                                           embed_table_footer=search_description_message,
+                                                           embed_table_footer=injured_effort_message_footer,
                                                            embed_title=initial_effort_embed_title,
                                                            embed_message_footer='',
                                                            embed_colour=initial_effort_embed_colour,
@@ -565,15 +658,16 @@ async def on_message(effort_message_request):
 
                     if str(payload.emoji) == '🔍':
                         # get the description from before, and append the searching message.
-                        current_embed_description = worker_table_message + f"Searching for your cards now... this might " \
-                                                                           f"take me a while, so I'll send you a new " \
-                                                                           f"message when I'm done."
-                        search_embed = discord.Embed(title='Top Worker List',
-                                                     description=current_embed_description,
-                                                     footer='',
-                                                     colour=int('ADD8E6', 16)
-                                                     )
-                        await embed_message.edit(embed=search_embed)
+                        embed_outputs = embedGenerator(input_database=embed_outputs[3],
+                                                       embed_message_pages=embed_outputs[1],
+                                                       embed_table_header=initial_effort_table_header,
+                                                       embed_table_footer=search_embed_footer,
+                                                       embed_title=initial_effort_embed_title,
+                                                       embed_message_footer='',
+                                                       embed_colour=search_embed_colour,
+                                                       embed_page_number=embed_outputs[2])
+
+                        await embed_message.edit(embed=embed_outputs[0])
 
                         # now run a search for the kwi commands as usual.
                         character_name_data = []
@@ -788,6 +882,7 @@ async def on_message(effort_message_request):
                         update_event = pd.DataFrame({'requestedBy': [requester_user_id],
                                                      'timeRequested': [embed_message.created_at.timestamp()]})
 
+                        print(update_event)
                         update_event.to_csv('workerUpdateEvent.csv',
                                             float_format='%.5f',
                                             mode='a',
@@ -866,8 +961,27 @@ async def on_message(effort_message_request):
 
                     if str(payload.emoji) == '🏥':
                         # we want this to switch back and forth between the injured and injured databases.
-                        if embed_outputs[1] =
+                        print(injured_worker_pages)
+                        if embed_outputs[1] == worker_pages:
+                            embed_outputs = embedGenerator(input_database=database_injured_filtered,
+                                                           embed_message_pages=injured_worker_pages,
+                                                           embed_table_header=injured_effort_table_header,
+                                                           embed_table_footer=injured_effort_message_footer,
+                                                           embed_title=injured_effort_embed_title,
+                                                           embed_message_footer='',
+                                                           embed_colour=injured_effort_embed_colour,
+                                                           embed_page_number=1)
 
+                        elif embed_outputs[1] == injured_worker_pages:
+                            embed_outputs = embedGenerator(input_database=database_user_cards,
+                                                           embed_message_pages=worker_pages,
+                                                           embed_table_header=initial_effort_table_header,
+                                                           embed_table_footer=search_description_message,
+                                                           embed_title=initial_effort_embed_title,
+                                                           embed_message_footer='',
+                                                           embed_colour=initial_effort_embed_colour,
+                                                           embed_page_number=1)
+                        await embed_message.edit(embed=embed_outputs[0])
 
 @bot.event
 # this is to find the klu
