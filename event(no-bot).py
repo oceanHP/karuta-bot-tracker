@@ -5,6 +5,8 @@ from multiprocessing import Pool
 
 import os
 
+import random
+
 # this loads the discord library
 import discord
 from dotenv import load_dotenv
@@ -249,7 +251,6 @@ async def on_message(message):
         await message.channel.send(response)
     await bot.process_commands(message)
 
-
 @bot.command(name='effort')
 # this is for effort tracking
 async def on_message(effort_message_request):
@@ -482,24 +483,23 @@ async def on_message(effort_message_request):
     time.sleep(0.5)
     await embed_message.add_reaction('➡️')
     time.sleep(0.5)
-    await embed_message.add_reaction('❌')
-    time.sleep(0.5)
     await embed_message.add_reaction('🔍')
+
     updated_embed = None
     # we want to timeout the message after a certain time
-    embed_cutoff_time = embed_message.created_at.timestamp() + float(120)
-
+    embed_cutoff_time = time.time() + float(120)
     while float(time.time()) < embed_cutoff_time:
         try:
-            payload = await bot.wait_for('raw_reaction_add', timeout=embed_cutoff_time)
+            payload = await bot.wait_for('raw_reaction_add')
         # we go down this route if there was no reaction added
-        except asyncio.exceptions.TimeoutError:
+        except:
             print('ending workflow')
             return
         # we only proceed with the code if the user reacted with the right emojis.
+        print(payload)
         if payload.member.id == requester_user_id:
             if payload.message_id == embed_message.id:
-                if str(payload.emoji) in ['⬅️', '➡️', '🔍', '❌']:
+                if str(payload.emoji) in ['⬅️', '➡️', '🔍']:
                     # if this is met, then we say if its right, then increment the page number by 1
                     # update the content
                     # also update the footer
@@ -552,9 +552,6 @@ async def on_message(effort_message_request):
                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
                         await embed_message.edit(embed=updated_embed)
-
-                    if str(payload.emoji) == '❌':
-                        break
 
                     if str(payload.emoji) == '🔍':
                         # get the description from before, and append the searching message.
@@ -946,7 +943,7 @@ async def on_message(message):
                 base_message_main = f'The ◈{lookup_data[4][1]} edition{lookup_data[0][1]} has a base value of around {base_value} at ★★★★. '
 
                 if base_value > worker_cutoff:
-                    if base_value > god_cutoff:
+                    if base_value >= god_cutoff:
                         base_value_message_flavour = f'This is god-tier status! (Nezuko has a value of 84)'
 
                     else:
@@ -964,7 +961,7 @@ async def on_message(message):
             else:
                 message_info = message.content
             print(f'Lookup bot found an error, it probably received the wrong message. Here is the message:\n'
-                  f'{message.info}\n\n')
+                  f'{message}\n\n')
 
         if data:
             responseText = baseValueResponse(data)
@@ -1252,176 +1249,237 @@ async def on_message(message):
     if str(payload.emoji) == '❌':
         await confirmation_message.edit(content="Gotcha, I won't go snooping around.")
 
-    # await bot.process_commands(message)
+    await bot.process_commands(message)
+#
+# @bot.event
+# # testing
+# async def on_reaction_add(reaction, user):
+#     if user.id == 130401447052443649:
+#         print("matched egg, send a message to discord")
+#         temp_string = "<@!130401447052443649>, you placed Springtide Egg #7 into your basket!"
+#         print("waiting for egg pickup msg")
+#         egg_matched = False
+#         while egg_matched == False:
+#             try:
+#                 egg_pickup = await bot.wait_for('message', timeout=60.0)
+#                 print(egg_pickup.content)
+#                 if "you placed" in egg_pickup.content:
+#                     if egg_pickup.author.id == 130401447052443649:
+#                         print("success")
+#                         egg_matched = True
+#             except:
+#                 print("no-one claimed the egg sadge")
+#         #now parse the message string
+#         temp_list = temp_string.split()
+#         egg_number = re.sub('[<>@!,]','','stEgg1a')
+#         print(f'{egg_number}')
+
+
+@bot.event
+# this pings users if about the egg event
+async def on_reaction_add(reaction, user):
+    # define the array of emoji names that Karuta uses:
+    egg_names = ('stEgg1a', 'stEgg2a', 'stEgg3a', 'stEgg4a', 'stEgg5a', 'stEgg6a', 'stEgg7a', 'stEgg8a', 'stEgg9a', 'stEgg10a',
+                 'stEgg11a', 'stEgg12a', 'stEgg13a', 'stEgg14a', 'stEgg15a', 'stEgg16a', 'stEgg17a', 'stEgg18a', 'stEgg19a', 'stEgg20a')
+
+    #define the karuta_easter role
+    karuta_easter_role_id = 826619946834067467
+
+    # wait for a reaction from the bot
+    try:
+        if user.id == KARUTA_BOT:
+            if reaction.emoji.name in egg_names:
+                egg_number = re.sub('[a-z]','',reaction.emoji.name)
+                egg_number = re.sub('[A-Z]', '', egg_number)
+                egg_message_content = f"<@&{karuta_easter_role_id}> egg drop #{egg_number} bois"
+                await reaction.message.channel.send(f"{egg_message_content}")
+
+                # troll_duration = 5
+                # duration_changes = 25
+                # troll_pause = troll_duration/duration_changes
+                # troll_text = "\n get trolled :shopping_cart:"
+                # i=0
+                # for i in range(duration_changes):
+                #     time.sleep(troll_pause)
+                #     number_of_lines = random.randint(1, 8)
+                #     await egg_message.edit(content=egg_message_content + number_of_lines*troll_text)
+                #     i+=1
+    except:
+        pass
+
+
+
+
+    #now, create a dataframe for the eggs.
 
 
 # ---- DEPRECATED CODE ----
 
-# flower detection bot the Valentine's day event 2021. Needs to be refactored to use the bot object.
-@client.event
-# this event is for the flower event
-async def on_reaction_add(reaction, user):
-    # define the list of flowers that require a wait time.
-    flowers = np.array([
-        ['🌹', 809464733320347678],
-        ['🌻', 809464799364120586],
-        ['🌼', 809498603865243658],
-        ['🌷', 809464596539637820]])
-
-    # define how many seconds we want to give for people to grab the flower.
-    mentions_cutoff = int(5)
-    free_for_all_cutoff = int(45)
-
-    # check if the message was sent by karuta bot
-    if user.id == KARUTA_BOT:
-
-        # defining flowerEmoji as our emoji in the list that we check against. we now check each element
-        i = 0
-        for flowerEmoji in flowers[:, 0]:
-
-            # if the emoji is not matched, then increment by 1
-            if str(reaction) != flowerEmoji:
-                i += 1
-
-            # if the emoji is matched, then proceed with the rest of the code
-            else:
-                # pull out the role ID that corresponds to this flower
-                flower_role_id = flowers[i, 1]
-
-                # now that we've identified a flower has spawned, send a message in the chat.
-                flower_spawn_message = await reaction.message.channel.send(
-                    "A flower has spawned! Let me see what kind of flower it is... 🧐")
-
-                # at this point, we will also set the time that the flower spawned.
-                spawn_time = time.time()
-
-                # now define the cutoff time after which we want to send the cutoff message.
-                mentions_cutoff_time = spawn_time + mentions_cutoff
-
-                # finally for later, we define the free for all time,
-                # after which we edit the message to say that anyone can grab it.
-                free_for_all_cutoff_time = spawn_time + free_for_all_cutoff
-
-                payload_sent = False
-                # wait for a reaction to be added. we want to keep iterating within the cutoff time period and stop
-                while time.time() < mentions_cutoff_time:
-
-                    try:
-                        # code will wait for a specified period for any reaction to be sent (any)
-                        payload = await client.wait_for('raw_reaction_add', timeout=mentions_cutoff)
-
-                        # if none are sent at all, then terminate the code and proceed to send a mention out.
-                    except asyncio.exceptions.TimeoutError:
-                        print(f'no emoji was received')
-                        payload_sent = False
-
-                        # if an emoji was sent in the server, we want to check that it's the right one.
-                    else:
-                        reacted_emoji = payload.emoji
-                        payload_sent = True
-
-                        # now, check if the emoji is the same as the flower we're interested in.
-                        if str(reacted_emoji) == flowers[i, 0]:
-                            print('the emoji is the same')
-
-                            # before we can proceed, we also want to check that the react was on the initial message.
-                            if payload.message_id == reaction.message.id:
-                                print('the react is on the same message')
-
-                                # if we have got a flower mention on the same message,
-                                # then we set the flag to be False and break the loop.
-                                send_mentions = False
-                                print('success!')
-                                break
-                            else:
-                                print('the react is on the wrong message')
-                                send_mentions = True
-                        else:
-                            print('the emoji is not the same')
-                            send_mentions = True
-
-                print(
-                    f'time is up. the cutoff time was {mentions_cutoff_time} '
-                    f'and it is now {time.time()}\n The payload flag is {payload_sent}')
-
-                # we need to first check on time in case the payload has not been sent.
-                # assuming that we've passed the cutoff time, check if a payload has been sent.
-                # if it hasn't, then we can just send the mentions message.
-                flower_role_title = discord.utils.get(client.guilds[0].roles, id=int(flower_role_id))
-                if payload_sent == False:
-                    flower_confirmation_message = await reaction.message.channel.send(
-                        f"I've got it: it's a {flowerEmoji} ! "
-                        f"I think {flower_role_title.mention} knows how to care for them.")
-                    print(
-                        'payload sent was False, meaning that either no-one reacted with an emoji, or an emoji was added but not with the appropriate flower.')
-                else:
-                    # if a payload has been sent, then we check if we should sendMentions or not.
-                    # if sendMentions is False, it means that someone claimed the flower.
-                    send_followup_mentions = ''
-                    if send_mentions == False:
-                        await flower_spawn_message.edit(
-                            content="I couldn't identify it, looks like someone else has picked it up before I could 😖")
-                        print(
-                            'payload sent was true, but sendMentions flag was false,'
-                            'meaning that someone picked up the flower within the limit.')
-                    else:
-                        # get the role object for the flower
-                        # this will need to be refactored if connected to more than one server
-                        flower_confirmation_message = await reaction.message.channel.send(
-                            f"I've got it: it's a {flowerEmoji} ! "
-                            f"I think {flower_role_title.mention} knows how to care for them.")
-                        print(
-                            'sendMentions was True, meaning that no-one reacted with the right flower'
-                            'and 5 seconds had passed')
-                        try:
-                            print(
-                                f'now that 5s has passed, we wait for the next reaction. '
-                                f'This will last {free_for_all_cutoff_time - time.time()} seconds.')
-                            payload_second = await client.wait_for('raw_reaction_add',
-                                                                   timeout=free_for_all_cutoff_time - time.time())
-                        # if no reaction was added, then time it out
-                        except asyncio.exceptions.TimeoutError:
-                            print(
-                                f'a payload still was not received, so we edit our old message,'
-                                f'saying that someone should grab the flower.')
-                            await flower_confirmation_message.edit(
-                                content="That flower looks like it's going to disappear soon,"
-                                        "someone should grab it before it does!")
-                        # if a reaction was added, first check if it's the right emoji and on the right message.
-                        else:
-                            # now, check if the emoji is the same as the flower we're interested in.
-                            if str(reacted_emoji) == flowers[i, 0]:
-                                print('a payload was sent after 5s and the emoji is the same')
-
-                                # before we can proceed, we also want to check that
-                                # the react was on the initial message.
-                                if payload_second.message_id == reaction.message.id:
-                                    print('a payload was sent after 5s the react is on the same message')
-
-                                    # if we have got a flower mention on the same message,
-                                    # then we set the flag to be False and break the loop.
-                                    send_followup_mentions = False
-                                    print('success! the payload was the right flower')
-                                    break
-                                else:
-                                    print('for the second payload, the react is on the wrong message')
-                                    send_followup_mentions = True
-                            else:
-                                print('the emoji is not the same')
-                                send_followup_mentions = True
-
-                        # now we've determined if it was the right message. using the usual logic:
-                        if send_followup_mentions == True:
-                            # if emojis have been placed but not the flower, ie. it still hasn't been claimed, then send out the message.
-                            await flower_confirmation_message.edit(
-                                content="That flower looks like it's going to disappear soon, someone should grab it before it does!")
-                        # if it has been claimed, then send out the claim message instead.
-                        else:
-                            # write the time left on the timer.
-                            timeRemaining = 60 - (time.time() - spawn_time)
-                            await flower_confirmation_message.edit(
-                                content=f"Phew, looks like someone grabbed it in time. You had {timeRemaining} seconds left to claim it! ")
-
-
+# # flower detection bot the Valentine's day event 2021. Needs to be refactored to use the bot object.
+# @bot.event
+# # this event is for the flower event
+# async def on_reaction_add(reaction, user):
+#     # define the list of flowers that require a wait time.
+#     flowers = np.array([
+#         ['🌹', 809464733320347678],
+#         ['🌻', 809464799364120586],
+#         ['🌼', 809498603865243658],
+#         ['🌷', 809464596539637820]])
+#
+#     # define how many seconds we want to give for people to grab the flower.
+#     mentions_cutoff = int(5)
+#     free_for_all_cutoff = int(45)
+#
+#     # check if the message was sent by karuta bot
+#     if user.id == KARUTA_BOT:
+#
+#         # defining flowerEmoji as our emoji in the list that we check against. we now check each element
+#         i = 0
+#         for flowerEmoji in flowers[:, 0]:
+#
+#             # if the emoji is not matched, then increment by 1
+#             if str(reaction) != flowerEmoji:
+#                 i += 1
+#
+#             # if the emoji is matched, then proceed with the rest of the code
+#             else:
+#                 # pull out the role ID that corresponds to this flower
+#                 flower_role_id = flowers[i, 1]
+#
+#                 # now that we've identified a flower has spawned, send a message in the chat.
+#                 flower_spawn_message = await reaction.message.channel.send(
+#                     "A flower has spawned! Let me see what kind of flower it is... 🧐")
+#
+#                 # at this point, we will also set the time that the flower spawned.
+#                 spawn_time = time.time()
+#
+#                 # now define the cutoff time after which we want to send the cutoff message.
+#                 mentions_cutoff_time = spawn_time + mentions_cutoff
+#
+#                 # finally for later, we define the free for all time,
+#                 # after which we edit the message to say that anyone can grab it.
+#                 free_for_all_cutoff_time = spawn_time + free_for_all_cutoff
+#
+#                 payload_sent = False
+#                 # wait for a reaction to be added. we want to keep iterating within the cutoff time period and stop
+#                 while time.time() < mentions_cutoff_time:
+#
+#                     try:
+#                         # code will wait for a specified period for any reaction to be sent (any)
+#                         payload = await client.wait_for('raw_reaction_add', timeout=mentions_cutoff)
+#
+#                         # if none are sent at all, then terminate the code and proceed to send a mention out.
+#                     except asyncio.exceptions.TimeoutError:
+#                         print(f'no emoji was received')
+#                         payload_sent = False
+#
+#                         # if an emoji was sent in the server, we want to check that it's the right one.
+#                     else:
+#                         reacted_emoji = payload.emoji
+#                         payload_sent = True
+#
+#                         # now, check if the emoji is the same as the flower we're interested in.
+#                         if str(reacted_emoji) == flowers[i, 0]:
+#                             print('the emoji is the same')
+#
+#                             # before we can proceed, we also want to check that the react was on the initial message.
+#                             if payload.message_id == reaction.message.id:
+#                                 print('the react is on the same message')
+#
+#                                 # if we have got a flower mention on the same message,
+#                                 # then we set the flag to be False and break the loop.
+#                                 send_mentions = False
+#                                 print('success!')
+#                                 break
+#                             else:
+#                                 print('the react is on the wrong message')
+#                                 send_mentions = True
+#                         else:
+#                             print('the emoji is not the same')
+#                             send_mentions = True
+#
+#                 print(
+#                     f'time is up. the cutoff time was {mentions_cutoff_time} '
+#                     f'and it is now {time.time()}\n The payload flag is {payload_sent}')
+#
+#                 # we need to first check on time in case the payload has not been sent.
+#                 # assuming that we've passed the cutoff time, check if a payload has been sent.
+#                 # if it hasn't, then we can just send the mentions message.
+#                 flower_role_title = discord.utils.get(client.guilds[0].roles, id=int(flower_role_id))
+#                 if payload_sent == False:
+#                     flower_confirmation_message = await reaction.message.channel.send(
+#                         f"I've got it: it's a {flowerEmoji} ! "
+#                         f"I think {flower_role_title.mention} knows how to care for them.")
+#                     print(
+#                         'payload sent was False, meaning that either no-one reacted with an emoji, or an emoji was added but not with the appropriate flower.')
+#                 else:
+#                     # if a payload has been sent, then we check if we should sendMentions or not.
+#                     # if sendMentions is False, it means that someone claimed the flower.
+#                     send_followup_mentions = ''
+#                     if send_mentions == False:
+#                         await flower_spawn_message.edit(
+#                             content="I couldn't identify it, looks like someone else has picked it up before I could 😖")
+#                         print(
+#                             'payload sent was true, but sendMentions flag was false,'
+#                             'meaning that someone picked up the flower within the limit.')
+#                     else:
+#                         # get the role object for the flower
+#                         # this will need to be refactored if connected to more than one server
+#                         flower_confirmation_message = await reaction.message.channel.send(
+#                             f"I've got it: it's a {flowerEmoji} ! "
+#                             f"I think {flower_role_title.mention} knows how to care for them.")
+#                         print(
+#                             'sendMentions was True, meaning that no-one reacted with the right flower'
+#                             'and 5 seconds had passed')
+#                         try:
+#                             print(
+#                                 f'now that 5s has passed, we wait for the next reaction. '
+#                                 f'This will last {free_for_all_cutoff_time - time.time()} seconds.')
+#                             payload_second = await client.wait_for('raw_reaction_add',
+#                                                                    timeout=free_for_all_cutoff_time - time.time())
+#                         # if no reaction was added, then time it out
+#                         except asyncio.exceptions.TimeoutError:
+#                             print(
+#                                 f'a payload still was not received, so we edit our old message,'
+#                                 f'saying that someone should grab the flower.')
+#                             await flower_confirmation_message.edit(
+#                                 content="That flower looks like it's going to disappear soon,"
+#                                         "someone should grab it before it does!")
+#                         # if a reaction was added, first check if it's the right emoji and on the right message.
+#                         else:
+#                             # now, check if the emoji is the same as the flower we're interested in.
+#                             if str(reacted_emoji) == flowers[i, 0]:
+#                                 print('a payload was sent after 5s and the emoji is the same')
+#
+#                                 # before we can proceed, we also want to check that
+#                                 # the react was on the initial message.
+#                                 if payload_second.message_id == reaction.message.id:
+#                                     print('a payload was sent after 5s the react is on the same message')
+#
+#                                     # if we have got a flower mention on the same message,
+#                                     # then we set the flag to be False and break the loop.
+#                                     send_followup_mentions = False
+#                                     print('success! the payload was the right flower')
+#                                     break
+#                                 else:
+#                                     print('for the second payload, the react is on the wrong message')
+#                                     send_followup_mentions = True
+#                             else:
+#                                 print('the emoji is not the same')
+#                                 send_followup_mentions = True
+#
+#                         # now we've determined if it was the right message. using the usual logic:
+#                         if send_followup_mentions == True:
+#                             # if emojis have been placed but not the flower, ie. it still hasn't been claimed, then send out the message.
+#                             await flower_confirmation_message.edit(
+#                                 content="That flower looks like it's going to disappear soon, someone should grab it before it does!")
+#                         # if it has been claimed, then send out the claim message instead.
+#                         else:
+#                             # write the time left on the timer.
+#                             timeRemaining = 60 - (time.time() - spawn_time)
+#                             await flower_confirmation_message.edit(
+#                                 content=f"Phew, looks like someone grabbed it in time. You had {timeRemaining} seconds left to claim it! ")
+#
+#
 bot.run(TOKEN)
-# client.run(TOKEN)
+# # client.run(TOKEN)
