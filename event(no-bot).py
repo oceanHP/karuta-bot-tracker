@@ -261,7 +261,7 @@ async def on_message(effort_message_request):
     karuta_bot_channel = bot.get_channel(KARUTA_SPAM)
 
     # pull the user ID into a variable
-    requester_user_id = effort_message_request.author.id
+    requester_user_id = int(effort_message_request.author.id)
     # initialise the database from the csv file
     database_cards = pd.read_csv(filepath_or_buffer=r"initialisedDatabase.csv",
                                  sep=',',
@@ -277,9 +277,6 @@ async def on_message(effort_message_request):
 
     # filter the database on the requested user Id.
     database_user_cards = database_user_cards[database_user_cards['userId'] == requester_user_id]
-
-    if database_user_cards.empty:
-        await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd")
 
     # define a function that parses out a worker info message
     # 0     - character
@@ -343,7 +340,7 @@ async def on_message(effort_message_request):
 
     # define a function which takes in a database and spits out an array of worker info, with each index corresponding
     # to page of worker details
-    def embedGenerator(database):
+    def workerInfoGenerator(database):
         # go through each column and find the max element of each column
         # define an array which contains the length of each
         # for ease of formatting, we need the lengths of all the data we are going to input.
@@ -399,7 +396,7 @@ async def on_message(effort_message_request):
             table_string_pages.insert(page, embed_header + table_string_page_content)
         return table_string_pages
 
-    worker_pages = embedGenerator(database_user_cards)
+    worker_pages = workerInfoGenerator(database_user_cards)
 
     # read in the event database table to get the latest time.
     effort_update_event_database = pd.read_csv(filepath_or_buffer=r"workerUpdateEvent.csv",
@@ -411,50 +408,74 @@ async def on_message(effort_message_request):
                                              ascending=False,
                                              inplace=True)
 
-    # now filter for the selected user and get the most recent event for that user. If it's NaN, (i.e. no match), then we take the server message.
-    user_update_time = effort_update_event_database['timeRequested'].where(effort_update_event_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
-    user_updated_by = f"<@{effort_message_request.author.id}>"
-    if math.isnan(user_update_time):
-        # filter database on Initialiser entries.
-        effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
-        user_update_time = effort_update_event_database['timeRequested'].where(
-            effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
-        user_updated_by = str("me, beep boop")
+    if database_user_cards.empty:
+        embed_message = await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd, just hit the search emoji pls")
 
-
-    # now convert from unix to a standard datetime
-    user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
-
-    # then filter for the selected user. if empty, get server time
-    search_info = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
-                  f"If you'd like me to update your worker list, please react with 🔍."
-    # now create an embed.
-    # we also want a comment saying when the last search was run.
-    worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                           f'```\n{worker_pages[0]}```\n'
-    filteredEmbed = discord.Embed(title='Top Worker List',
-                                  description=worker_table_message + f'{search_info}',
-                                  footer='',
-                                  colour=int('FFA500', 16)
-                                  )
-    # set a variable which determines the page number
-    page_number = 1
-
-    # define a function for the footer
-
-    # we need to define a variable for the paging of the footer message.
-    if len(database_user_cards) < 10:
-        initial_page_upper_range = len(database_user_cards)
     else:
-        initial_page_upper_range = page_number * 10
+        # filter the database by the selected user:
+        filtered_event_time_database = effort_update_event_database.where(
+            effort_update_event_database['requestedBy'] == str(effort_message_request.author.id))
 
-    filteredEmbed.set_footer(text=f"Showing workers "
-                                  f"{((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(database_user_cards)}",
-                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+        # now remove all NaNs from the grid.
+        filtered_event_time_database = filtered_event_time_database[
+            filtered_event_time_database["requestedBy"].notnull()]
 
-    filteredEmbed.set_author(name="Top Worker List",
-                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-    embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
+        # if the grid is empty, this means that we filtered by the selected user and all results were invalid.
+        # in this scenario, we want to search for any entries that were done manually (by the bot)
+        if filtered_event_time_database.empty:
+            # filter database on Initialiser entries.
+            effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
+            user_update_time = effort_update_event_database['timeRequested'].where(
+                effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
+
+            # convert this unix time to a string that front end users can understand
+            user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+            user_updated_by = str("me, beep boop")
+
+            # we can also define what message we would like to appear here
+            search_prompt_header_text = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
+                                        f"If you'd like me to update your worker list, please react with 🔍."
+        # otherwise, we can filter normally:
+        else:
+            # filter for the selected user and get the most recent event for that user.
+            user_update_time = filtered_event_time_database['timeRequested'].where(
+                filtered_event_time_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
+            # convert this unix time to a string that front end users can understand
+            user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+
+            search_prompt_header_text = f"You last updated your workers on {user_update_time_text}.\n \n"
+
+        search_description_message = search_prompt_header_text + f"If you'd like me to update your worker list," \
+                                                                 f" please react with 🔍."
+
+        # now create an embed.
+        # we also want a comment saying when the last search was run.
+        worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
+                               f'```python\n{worker_pages[0]}```\n'
+        filteredEmbed = discord.Embed(title='Top Worker List',
+                                      description=worker_table_message + f'{search_description_message}',
+                                      footer='',
+                                      colour=int('FFA500', 16)
+                                      )
+        # set a variable which determines the page number
+        page_number = 1
+
+        # define a function for the footer
+
+        # we need to define a variable for the paging of the footer message.
+        if len(database_user_cards) < 10:
+            initial_page_upper_range = len(database_user_cards)
+        else:
+            initial_page_upper_range = page_number * 10
+
+        filteredEmbed.set_footer(text=f"Showing workers "
+                                      f"{((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(database_user_cards)}",
+                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+        filteredEmbed.set_author(name="Top Worker List",
+                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+        embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
 
     # this should be refactored into a for loop
     await embed_message.add_reaction('⬅️')
@@ -492,11 +513,11 @@ async def on_message(effort_message_request):
 
                             # to make message editing easier, we save the first two lines into a variable.
                             worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                                                   f'```\n{worker_pages[page_number - 1]}```\n'
+                                                   f'```python\n{worker_pages[page_number - 1]}```\n'
 
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_info}',
+                                                          description=worker_table_message + f'{search_description_message}',
                                                           footer='',
                                                           colour=int('FFA500', 16))
                             # the footer needs to show the correct number of workers at the max limit.
@@ -520,16 +541,17 @@ async def on_message(effort_message_request):
                             # decrease the page_number by 1, then pull in the array corresponding to that page.
                             page_number -= 1
                             worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                                                   f'```\n{worker_pages[page_number - 1]}```\n'
+                                                   f'```python\n{worker_pages[page_number - 1]}```\n'
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_info}',
+                                                          description=worker_table_message + f'{search_prompt_header_text}',
                                                           footer='',
                                                           colour=int('FFA500', 16)
                                                           )
                             updated_embed.set_footer(text=f"Showing workers "
                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                        await embed_message.edit(embed=updated_embed)
 
                     if str(payload.emoji) == '❌':
                         break
@@ -538,8 +560,7 @@ async def on_message(effort_message_request):
                         # get the description from before, and append the searching message.
                         current_embed_description = worker_table_message + f"Searching for your cards now... this might " \
                                                                            f"take me a while, so I'll send you a new " \
-                                                                           f"message when I'm done (psst this doesn't " \
-                                                                           f"work yet)"
+                                                                           f"message when I'm done."
                         search_embed = discord.Embed(title='Top Worker List',
                                                      description=current_embed_description,
                                                      footer='',
@@ -555,7 +576,6 @@ async def on_message(effort_message_request):
 
                         # get the new update time
                         new_user_update_time = time.time()
-                        print(new_user_update_time)
 
                         message_array = await effort_message_request.channel.history(
                             after=datetime.utcfromtimestamp(user_update_time),
@@ -563,7 +583,8 @@ async def on_message(effort_message_request):
 
                         message_array.reverse()
                         print(
-                            f'it took {time.time() - new_user_update_time} to generate a list of {len(message_array)} messages')
+                            f'MESSAGES FOUND: It has been {time.time() - new_user_update_time} seconds since code '
+                            f'started. I found {len(message_array)} messages')
                         previous_message = ''
                         valid_bot_message_titles = ['Card Details', 'Card Collection']
                         for msg in message_array:
@@ -609,11 +630,11 @@ async def on_message(effort_message_request):
                             previous_message = msg
 
                         print(
-                            f'found the prelim codes, it has been {time.time() - new_user_update_time} seconds since code started. I found {len(card_code_data)} codes ')
+                            f'CODES FOUND: It has been {time.time() - new_user_update_time} seconds since code started. I found {len(card_code_data)} codes ')
 
                         # now, search through and verify the codes.
-                        # define the array with empty data
-                        user_id_data = [None] * len(character_name_data)
+                        # first, define the array with empty data
+                        user_id_data = [''] * len(character_name_data)
                         valid_bot_message_titles = ['Card Details', 'Card Collection']
                         for code in range(len(card_code_data)):
                             async for elem in effort_message_request.channel.history(limit=len(message_array)):
@@ -634,7 +655,7 @@ async def on_message(effort_message_request):
                                                 break
 
                         print(
-                            f"finished doing extra checks, it's been {time.time() - new_user_update_time} since the code started")
+                            f"VERIFIED CODES: {sum(x == requester_user_id for x in user_id_data)} out of {len(card_code_data)} codes were verified.")
 
                         data = {'userId': user_id_data,
                                 'characterName': character_name_data,
@@ -642,54 +663,26 @@ async def on_message(effort_message_request):
                                 'cardEffort': card_effort_data,
                                 'recoveryDate': recovery_date_data
                                 }
-                        print(f'codes found')
+                        # We now create the searched effort database which we can update the original database with.
                         searched_effort_database = pd.DataFrame(data=data,
                                                                 columns=['userId', 'characterName', 'cardCode',
                                                                          'cardEffort', 'recoveryDate'])
 
-                        print(f'database generated after doing the checks')
+                        # we save a copy of this with all the unapplicable values
+                        unmatched_worker_database = searched_effort_database[~searched_effort_database.userId.isin([requester_user_id])]
+
+                        unmatched_worker_database.sort_values(by='cardEffort',
+                                                              ascending=False,
+                                                              inplace=True)
 
                         # filter database by requested user
                         searched_effort_database = searched_effort_database[
                             searched_effort_database['userId'] == requester_user_id]
 
-                        print(f'database filtering on the userId done')
-
                         # sort the database by effort in descending order
                         searched_effort_database.sort_values(by='cardEffort',
                                                              ascending=False,
                                                              inplace=True)
-
-                        # generate the array of embed messages
-                        searched_worker_pages = embedGenerator(searched_effort_database)
-
-                        current_embed_description = f"I found the following codes, adding them to the database now...\n " \
-                                                    f"```{searched_worker_pages[0]}```"
-                        search_embed = discord.Embed(title='Search Results',
-                                                     description=current_embed_description,
-                                                     footer='',
-                                                     colour=int('FFFF00', 16)
-                                                     )
-                        if len(searched_effort_database) < 10:
-                            initial_page_upper_range = len(searched_effort_database)
-                        else:
-                            initial_page_upper_range = page_number * 10
-
-                        page_number = 1
-                        search_embed.set_footer(
-                            text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(searched_effort_database)}")
-
-                        search_results_message = await effort_message_request.channel.send(
-                            content=f"<@{requester_user_id}>",
-                            embed=search_embed)
-
-                        await search_results_message.add_reaction('⬅️')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('➡️')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('❌')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('✅')
 
                         for code in searched_effort_database.cardCode.values:
                             # search the database to see if the card is in there.
@@ -697,13 +690,11 @@ async def on_message(effort_message_request):
                                 # if the code is present, then we want to append that value in the main database.
                                 # we need to get the index of the card first.
                                 matchIndex = database_cards[database_cards['cardCode'] == code].index[0]
-                                print(f"MATCHED\nold value: {database_cards.loc[matchIndex]}"
-                                      f"\n new value: {searched_effort_database[searched_effort_database['cardCode'] == code].index[0]}\n")
+                                print(f"MATCHED: updating DB entry")
                                 # we now replace the row with the row from our seaarched and filtered database
                                 database_cards.loc[matchIndex] = searched_effort_database.loc[
                                     searched_effort_database[
                                         searched_effort_database['cardCode'] == code].index[0]]
-
 
                             # if there is no match, then we need to append it to the database, rather than updating.
                             else:
@@ -711,50 +702,160 @@ async def on_message(effort_message_request):
                                     searched_effort_database.loc[searched_effort_database[
                                         searched_effort_database['cardCode'] == code].index[0]]
                                 print(
-                                    f"NO MATCH: inserting {searched_effort_database.loc[searched_effort_database[searched_effort_database['cardCode'] == code].index[0]]}")
+                                    f"NO MATCH: adding new entry to DB")
+
+                        # We want to display the data that has no userId.
+                        unmatched_worker_pages = workerInfoGenerator(unmatched_worker_database)
+
+                        # initialise the embed
+
+                        # we now re-initialise our page_number variable for paging on this new message
+                        page_number = 1
+
+                        if unmatched_worker_pages:
+                            if sum(x == requester_user_id for x in user_id_data) == 0:
+                                embed_header_text = f"Hmm, looks like I couldn't actually find any cards that" \
+                                                            f" belonged to you... \n" \
+                                                            f"Take a look at these and if they're yours, please run" \
+                                                            f" a kcharacterinfo command and a kworkerinfo command" \
+                                                            f" for those cards, and run me again!"
+
+                                search_embed = discord.Embed(title='Card Matching Failed',
+                                                             description='',
+                                                             footer='',
+                                                             colour=int('800000', 16))
+
+                            # if there were unmatched workers and we were able to match some of them, then we edit the
+                            # description message and change the colour of the embed.
+                            else:
+                                embed_header_text = f"I've found all your cards! By the way, I found these codes but " \
+                                                            f"weren't able to verify that they were yours. If they were, " \
+                                                            f"please run a kcharacterinfo command and a kworkerinfo command" \
+                                                            f" for those cards and run me again! "
+                                search_embed = discord.Embed(title='Cards Updated',
+                                                             description='',
+                                                             footer='',
+                                                             colour=int('00FF00', 16))
+
+                            current_embed_description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[0]}```\n" \
+                                                        f"Here's some stats:"
+
+                            if len(unmatched_worker_database) < 10:
+                                initial_page_upper_range = len(unmatched_worker_database)
+
+                            else:
+                                initial_page_upper_range = page_number * 10
+                            search_embed.set_footer(
+                                text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of "
+                                     f"{len(unmatched_worker_database)}")
+                        else:
+                            current_embed_description = f"Lucky you, looks like I was able to verify that all of the " \
+                                                        f"cards I found belonged to you! Have some stats anyway."
+                            search_embed = discord.Embed(title='Cards Updated',
+                                                         description='',
+                                                         footer='',
+                                                         colour=int('00FF00', 16))
+
+                        # now we add our constant elements:
+                        search_embed.description = current_embed_description
+
+                        search_embed.add_field(name="Cards Found",
+                                               value=len(card_code_data),
+                                               inline=True)
+                        search_embed.add_field(name="Cards Verified",
+                                               value=sum(x == requester_user_id for x in user_id_data),
+                                               inline=True)
+                        search_embed.add_field(name="Cards Unverified",
+                                               value=len(card_code_data) - sum(x == requester_user_id for x in user_id_data),
+                                               inline=True)
+                        
+                        search_embed.add_field(name="Time Taken",
+                                               value=f"{round(time.time() - new_user_update_time,2)} seconds ")
+
+                        search_results_message = await effort_message_request.channel.send(
+                            content=f"<@{requester_user_id}>",
+                            embed=search_embed)
 
                         # write the update event data to a dataframe, then write it into the database.
-
                         update_event = pd.DataFrame({'requestedBy': [requester_user_id],
                                                      'timeRequested': [embed_message.created_at.timestamp()]})
-                        print(f'now adding {update_event} to the DB')
+
                         update_event.to_csv('workerUpdateEvent.csv',
                                             float_format='%.5f',
                                             mode='a',
                                             index=False,
                                             header=False)
+
                         database_cards.to_csv('initialisedDatabase.csv',
                                               float_format='%.5f',
                                               index=False)
-                        final_message_embed = discord.Embed(description="me done pls run me again")
-                        await search_results_message.edit(embed=final_message_embed)
+
+                        # initialise the page number variable for this message
+                        search_embed_page_number = 1
 
 
-                        # while float(time.time()) < (search_results_message.created_at.timestamp() + float(6000)):
-                        #     try:
-                        #         confirmation_payload = await bot.wait_for('raw_reaction_add', timeout=6000.0)
-                        #     except asyncio.TimeoutError:
-                        #         final_message_embed = discord.Embed(description="I timed out...click faster next time")
-                        #         await search_results_message.edit(embed=final_message_embed)
-                        #     else:
-                        #         print(str(confirmation_payload.emoji))
-                        #         if confirmation_payload.member.id == requester_user_id:
-                        #             print(f'emoji was from the requested user')
-                        #             if confirmation_payload.message_id == search_results_message.id:
-                        #                 print(f'emoji was on the correct')
-                        #                 if str(confirmation_payload.emoji) in ['⬅️', '➡️', '✅', '❌']:
-                        #                     if str(confirmation_payload.emoji) == '✅':
-                        #                         print('tick emoji received')
-                        #                         # we want to compare the results in this validated database and add it to the previous one, which we can then write back into the csv.
-                        #                         # we may want to refactor this to be an append rather than a rewrite.
-                        #                     if str(confirmation_payload.emoji) == '❌':
-                        #                         final_message_embed = discord.Embed(
-                        #                             description="aight ima hea dout")
-                        #                         await search_results_message.edit(embed=final_message_embed)
-                        #                         return
+                        if len(unmatched_worker_pages) >= 2:
+                            # set a variable to the amount of time we want the user to be able to browse the pages
+                            user_paging_duration = float(120)
+                            await search_results_message.add_reaction('⬅️')
+                            time.sleep(0.5)
+                            await search_results_message.add_reaction('➡️')
+                            while float(time.time()) < search_results_message.created_at.timestamp() + user_paging_duration:
 
-    await bot.process_commands(effort_message_request)
+                                try:
+                                    payload = await bot.wait_for('raw_reaction_add', timeout=user_paging_duration)
+                                # we go down this route if there was no reaction added
+                                except asyncio.exceptions.TimeoutError:
+                                    print('ending workflow')
+                                    return
+                                # we only proceed with the code if the user reacted with the right emojis.
+                                print('found a payload')
+                                if payload.member.id == requester_user_id:
+                                    print(f'payload is from the requested user')
+                                    if payload.message_id == search_results_message.id:
+                                        if str(payload.emoji) in ['⬅️', '➡️']:
+                                            # if this is met, then we say if its right, then increment the page number by 1
+                                            # update the content
+                                            # also update the footer
+                                            if str(payload.emoji) == '➡️':
+                                                # if the page number is equal to the max number of pages, we cannot go any further forward.
+                                                if search_embed_page_number == len(unmatched_worker_pages):
+                                                    pass
+                                                # otherwise we should edit the message to display the previous page of results.
+                                                else:
+                                                    search_embed_page_number += 1
 
+                                                    # to make message editing easier, we save the first two lines into a variable.
+                                                    search_embed.description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[search_embed_page_number-1]}```\n" \
+                                                        f"Here's some stats anyway..."
+
+                                                    # the footer needs to show the correct number of workers at the max limit.
+                                                    if search_embed_page_number == len(unmatched_worker_pages):
+                                                        search_embed.set_footer(text=f"Showing workers "
+                                                                                      f"{((search_embed_page_number - 1) * 10) + 1}-{len(unmatched_worker_database)} of {len(unmatched_worker_database)}",
+                                                                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                                                    else:
+                                                        search_embed.set_footer(text=f"Showing workers "
+                                                                                      f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
+                                                                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+                                            if str(payload.emoji) == '⬅️':
+                                                # if the page_number is 1, we cannot go any further back. this is invalid so we do nothing
+                                                if search_embed_page_number == 1:
+                                                    pass
+                                                # otherwise we should edit the message to display the previous page of results.
+                                                else:
+                                                    # decrease the page_number by 1, then pull in the array corresponding to that page.
+                                                    search_embed_page_number -= 1
+                                                    search_embed.description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[search_embed_page_number-1]}```\n" \
+                                                        f"Here's some stats anyway..."
+                                                    search_embed.set_footer(text=f"Showing workers "
+                                                                                  f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
+                                                                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                                            await search_results_message.edit(embed=search_embed)
 
 @bot.event
 # this is to find the klu
