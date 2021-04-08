@@ -410,7 +410,8 @@ async def on_message(effort_message_request):
                                              inplace=True)
 
     if database_user_cards.empty:
-        embed_message = await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd, just hit the search emoji pls")
+        embed_message = await effort_message_request.channel.send("I couldn't find any worker info for you etc"
+                                                                  " placeholder text xd, just hit the search emoji pls")
 
     else:
         # filter the database by the selected user:
@@ -447,7 +448,28 @@ async def on_message(effort_message_request):
             search_prompt_header_text = f"You last updated your workers on {user_update_time_text}.\n \n"
 
         search_description_message = search_prompt_header_text + f"If you'd like me to update your worker list," \
-                                                                 f" please react with 🔍."
+                                                                 f" please react with  🔍.\n" \
+                                                                 f"If you want to see your injured workers, " \
+                                                                 f"please react with  🏥."
+
+        # create a generic function which generates an embed and the subsequent pages. this assumes that we have
+        # generated the array of pages to be displayed
+        def embedGenerator(embed_message_pages, embed_table_header, embed_table_footer, embed_title, embed_message_footer, embed_colour):
+            # embed_message_pages = the array of pages to be displayed
+            # embed_table_header = the text to be displayed above the embed
+            # embed_table_footer = the text to be displayed below the embed
+            # embed_title = title of the embed
+            # embed_message_footer = footer message of the embed (not the message)
+            # embed_colour = hex code of the colour to be used
+            embed_object = discord.Embed(title=embed_title,
+                                         description = f"{embed_table_header}\n"
+                                                       f"```python\n{embed_message_pages[0]}```\n"
+                                                       f"{embed_table_footer}",
+                                         footer=embed_message_footer,
+                                         colour=int(embed_colour, 16))
+            return embed_object
+
+        await effort_message_request.channel.send(embed=embedGenerator(worker_pages, 'test', 'test', 'test', 'test', 'FFA500'))
 
         # now create an embed.
         # we also want a comment saying when the last search was run.
@@ -481,6 +503,8 @@ async def on_message(effort_message_request):
     time.sleep(0.5)
     await embed_message.add_reaction('➡️')
     time.sleep(0.5)
+    await embed_message.add_reaction('🏥')
+    time.sleep(0.5)
     await embed_message.add_reaction('🔍')
 
     updated_embed = None
@@ -494,10 +518,9 @@ async def on_message(effort_message_request):
             print('ending workflow')
             return
         # we only proceed with the code if the user reacted with the right emojis.
-        print(payload)
         if payload.member.id == requester_user_id:
             if payload.message_id == embed_message.id:
-                if str(payload.emoji) in ['⬅️', '➡️', '🔍']:
+                if str(payload.emoji) in ['⬅️', '➡️', '🔍', '🏥']:
                     # if this is met, then we say if its right, then increment the page number by 1
                     # update the content
                     # also update the footer
@@ -851,6 +874,10 @@ async def on_message(effort_message_request):
                                                                                   f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
                                                                              icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
                                             await search_results_message.edit(embed=search_embed)
+
+                    if str(payload.emoji) == '🏥':
+                        print("success")
+
 
 @bot.event
 # this is to find the klu
@@ -1271,7 +1298,6 @@ async def on_message(message):
 #         temp_list = temp_string.split()
 #         egg_number = re.sub('[<>@!,]','','stEgg1a')
 #         print(f'{egg_number}')
-
 
 @bot.event
 # this pings users if about the egg event
