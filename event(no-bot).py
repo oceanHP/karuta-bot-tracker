@@ -461,8 +461,6 @@ async def on_message(effort_message_request):
         # set a variable which determines the page number
         page_number = 1
 
-        # define a function for the footer
-
         # we need to define a variable for the paging of the footer message.
         if len(database_user_cards) < 10:
             initial_page_upper_range = len(database_user_cards)
