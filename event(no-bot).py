@@ -5,6 +5,8 @@ from multiprocessing import Pool
 
 import os
 
+import random
+
 # this loads the discord library
 import discord
 from dotenv import load_dotenv
@@ -249,7 +251,6 @@ async def on_message(message):
         await message.channel.send(response)
     await bot.process_commands(message)
 
-
 @bot.command(name='effort')
 # this is for effort tracking
 async def on_message(effort_message_request):
@@ -261,7 +262,7 @@ async def on_message(effort_message_request):
     karuta_bot_channel = bot.get_channel(KARUTA_SPAM)
 
     # pull the user ID into a variable
-    requester_user_id = effort_message_request.author.id
+    requester_user_id = int(effort_message_request.author.id)
     # initialise the database from the csv file
     database_cards = pd.read_csv(filepath_or_buffer=r"initialisedDatabase.csv",
                                  sep=',',
@@ -277,9 +278,6 @@ async def on_message(effort_message_request):
 
     # filter the database on the requested user Id.
     database_user_cards = database_user_cards[database_user_cards['userId'] == requester_user_id]
-
-    if database_user_cards.empty:
-        await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd")
 
     # define a function that parses out a worker info message
     # 0     - character
@@ -343,7 +341,7 @@ async def on_message(effort_message_request):
 
     # define a function which takes in a database and spits out an array of worker info, with each index corresponding
     # to page of worker details
-    def embedGenerator(database):
+    def workerInfoGenerator(database):
         # go through each column and find the max element of each column
         # define an array which contains the length of each
         # for ease of formatting, we need the lengths of all the data we are going to input.
@@ -399,7 +397,7 @@ async def on_message(effort_message_request):
             table_string_pages.insert(page, embed_header + table_string_page_content)
         return table_string_pages
 
-    worker_pages = embedGenerator(database_user_cards)
+    worker_pages = workerInfoGenerator(database_user_cards)
 
     # read in the event database table to get the latest time.
     effort_update_event_database = pd.read_csv(filepath_or_buffer=r"workerUpdateEvent.csv",
@@ -411,74 +409,97 @@ async def on_message(effort_message_request):
                                              ascending=False,
                                              inplace=True)
 
-    # now filter for the selected user and get the most recent event for that user. If it's NaN, (i.e. no match), then we take the server message.
-    user_update_time = effort_update_event_database['timeRequested'].where(effort_update_event_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
-    user_updated_by = f"<@{effort_message_request.author.id}>"
-    if math.isnan(user_update_time):
-        # filter database on Initialiser entries.
-        effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
-        user_update_time = effort_update_event_database['timeRequested'].where(
-            effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
-        user_updated_by = str("me, beep boop")
+    if database_user_cards.empty:
+        embed_message = await effort_message_request.channel.send("I couldn't find any worker info for you etc placeholder text xd, just hit the search emoji pls")
 
-
-    # now convert from unix to a standard datetime
-    user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
-
-    # then filter for the selected user. if empty, get server time
-    search_info = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
-                  f"If you'd like me to update your worker list, please react with 🔍."
-    # now create an embed.
-    # we also want a comment saying when the last search was run.
-    worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                           f'```\n{worker_pages[0]}```\n'
-    filteredEmbed = discord.Embed(title='Top Worker List',
-                                  description=worker_table_message + f'{search_info}',
-                                  footer='',
-                                  colour=int('FFA500', 16)
-                                  )
-    # set a variable which determines the page number
-    page_number = 1
-
-    # define a function for the footer
-
-    # we need to define a variable for the paging of the footer message.
-    if len(database_user_cards) < 10:
-        initial_page_upper_range = len(database_user_cards)
     else:
-        initial_page_upper_range = page_number * 10
+        # filter the database by the selected user:
+        filtered_event_time_database = effort_update_event_database.where(
+            effort_update_event_database['requestedBy'] == str(effort_message_request.author.id))
 
-    filteredEmbed.set_footer(text=f"Showing workers "
-                                  f"{((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(database_user_cards)}",
-                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+        # now remove all NaNs from the grid.
+        filtered_event_time_database = filtered_event_time_database[
+            filtered_event_time_database["requestedBy"].notnull()]
 
-    filteredEmbed.set_author(name="Top Worker List",
-                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-    embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
+        # if the grid is empty, this means that we filtered by the selected user and all results were invalid.
+        # in this scenario, we want to search for any entries that were done manually (by the bot)
+        if filtered_event_time_database.empty:
+            # filter database on Initialiser entries.
+            effort_update_event_database = effort_update_event_database[effort_update_event_database['requestedBy'] == "Initialiser"]
+            user_update_time = effort_update_event_database['timeRequested'].where(
+                effort_update_event_database['requestedBy'] == "Initialiser").iloc[0]
+
+            # convert this unix time to a string that front end users can understand
+            user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+            user_updated_by = str("me, beep boop")
+
+            # we can also define what message we would like to appear here
+            search_prompt_header_text = f"The last search was run at {user_update_time_text} by {user_updated_by}.\n\n" \
+                                        f"If you'd like me to update your worker list, please react with 🔍."
+        # otherwise, we can filter normally:
+        else:
+            # filter for the selected user and get the most recent event for that user.
+            user_update_time = filtered_event_time_database['timeRequested'].where(
+                filtered_event_time_database['requestedBy'] == str(effort_message_request.author.id)).iloc[0]
+            # convert this unix time to a string that front end users can understand
+            user_update_time_text = datetime.utcfromtimestamp(user_update_time).strftime("%H:%M %d/%m/%y")
+
+            search_prompt_header_text = f"You last updated your workers on {user_update_time_text}.\n \n"
+
+        search_description_message = search_prompt_header_text + f"If you'd like me to update your worker list," \
+                                                                 f" please react with 🔍."
+
+        # now create an embed.
+        # we also want a comment saying when the last search was run.
+        worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
+                               f'```python\n{worker_pages[0]}```\n'
+        filteredEmbed = discord.Embed(title='Top Worker List',
+                                      description=worker_table_message + f'{search_description_message}',
+                                      footer='',
+                                      colour=int('FFA500', 16)
+                                      )
+        # set a variable which determines the page number
+        page_number = 1
+
+        # define a function for the footer
+
+        # we need to define a variable for the paging of the footer message.
+        if len(database_user_cards) < 10:
+            initial_page_upper_range = len(database_user_cards)
+        else:
+            initial_page_upper_range = page_number * 10
+
+        filteredEmbed.set_footer(text=f"Showing workers "
+                                      f"{((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(database_user_cards)}",
+                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+        filteredEmbed.set_author(name="Top Worker List",
+                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+        embed_message = await effort_message_request.channel.send(embed=filteredEmbed)
 
     # this should be refactored into a for loop
     await embed_message.add_reaction('⬅️')
     time.sleep(0.5)
     await embed_message.add_reaction('➡️')
     time.sleep(0.5)
-    await embed_message.add_reaction('❌')
-    time.sleep(0.5)
     await embed_message.add_reaction('🔍')
+
     updated_embed = None
     # we want to timeout the message after a certain time
-    embed_cutoff_time = embed_message.created_at.timestamp() + float(120)
-
+    embed_cutoff_time = time.time() + float(120)
     while float(time.time()) < embed_cutoff_time:
         try:
-            payload = await bot.wait_for('raw_reaction_add', timeout=embed_cutoff_time)
+            payload = await bot.wait_for('raw_reaction_add')
         # we go down this route if there was no reaction added
-        except asyncio.exceptions.TimeoutError:
+        except:
             print('ending workflow')
             return
         # we only proceed with the code if the user reacted with the right emojis.
+        print(payload)
         if payload.member.id == requester_user_id:
             if payload.message_id == embed_message.id:
-                if str(payload.emoji) in ['⬅️', '➡️', '🔍', '❌']:
+                if str(payload.emoji) in ['⬅️', '➡️', '🔍']:
                     # if this is met, then we say if its right, then increment the page number by 1
                     # update the content
                     # also update the footer
@@ -492,11 +513,11 @@ async def on_message(effort_message_request):
 
                             # to make message editing easier, we save the first two lines into a variable.
                             worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                                                   f'```\n{worker_pages[page_number - 1]}```\n'
+                                                   f'```python\n{worker_pages[page_number - 1]}```\n'
 
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_info}',
+                                                          description=worker_table_message + f'{search_description_message}',
                                                           footer='',
                                                           colour=int('FFA500', 16))
                             # the footer needs to show the correct number of workers at the max limit.
@@ -520,26 +541,23 @@ async def on_message(effort_message_request):
                             # decrease the page_number by 1, then pull in the array corresponding to that page.
                             page_number -= 1
                             worker_table_message = f'Workers owned by <@{requester_user_id}>, sorted by effort.\n' \
-                                                   f'```\n{worker_pages[page_number - 1]}```\n'
+                                                   f'```python\n{worker_pages[page_number - 1]}```\n'
                             # since we've stored this into an array, the Nth page actually corresponds to the (N-1)th index
                             updated_embed = discord.Embed(title='Top Worker List',
-                                                          description=worker_table_message + f'{search_info}',
+                                                          description=worker_table_message + f'{search_prompt_header_text}',
                                                           footer='',
                                                           colour=int('FFA500', 16)
                                                           )
                             updated_embed.set_footer(text=f"Showing workers "
                                                           f"{((page_number - 1) * 10) + 1}-{page_number * 10} of {len(database_user_cards)}",
                                                      icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
-
-                    if str(payload.emoji) == '❌':
-                        break
+                        await embed_message.edit(embed=updated_embed)
 
                     if str(payload.emoji) == '🔍':
                         # get the description from before, and append the searching message.
                         current_embed_description = worker_table_message + f"Searching for your cards now... this might " \
                                                                            f"take me a while, so I'll send you a new " \
-                                                                           f"message when I'm done (psst this doesn't " \
-                                                                           f"work yet)"
+                                                                           f"message when I'm done."
                         search_embed = discord.Embed(title='Top Worker List',
                                                      description=current_embed_description,
                                                      footer='',
@@ -555,7 +573,6 @@ async def on_message(effort_message_request):
 
                         # get the new update time
                         new_user_update_time = time.time()
-                        print(new_user_update_time)
 
                         message_array = await effort_message_request.channel.history(
                             after=datetime.utcfromtimestamp(user_update_time),
@@ -563,7 +580,8 @@ async def on_message(effort_message_request):
 
                         message_array.reverse()
                         print(
-                            f'it took {time.time() - new_user_update_time} to generate a list of {len(message_array)} messages')
+                            f'MESSAGES FOUND: It has been {time.time() - new_user_update_time} seconds since code '
+                            f'started. I found {len(message_array)} messages')
                         previous_message = ''
                         valid_bot_message_titles = ['Card Details', 'Card Collection']
                         for msg in message_array:
@@ -609,11 +627,11 @@ async def on_message(effort_message_request):
                             previous_message = msg
 
                         print(
-                            f'found the prelim codes, it has been {time.time() - new_user_update_time} seconds since code started. I found {len(card_code_data)} codes ')
+                            f'CODES FOUND: It has been {time.time() - new_user_update_time} seconds since code started. I found {len(card_code_data)} codes ')
 
                         # now, search through and verify the codes.
-                        # define the array with empty data
-                        user_id_data = [None] * len(character_name_data)
+                        # first, define the array with empty data
+                        user_id_data = [''] * len(character_name_data)
                         valid_bot_message_titles = ['Card Details', 'Card Collection']
                         for code in range(len(card_code_data)):
                             async for elem in effort_message_request.channel.history(limit=len(message_array)):
@@ -634,7 +652,7 @@ async def on_message(effort_message_request):
                                                 break
 
                         print(
-                            f"finished doing extra checks, it's been {time.time() - new_user_update_time} since the code started")
+                            f"VERIFIED CODES: {sum(x == requester_user_id for x in user_id_data)} out of {len(card_code_data)} codes were verified.")
 
                         data = {'userId': user_id_data,
                                 'characterName': character_name_data,
@@ -642,54 +660,26 @@ async def on_message(effort_message_request):
                                 'cardEffort': card_effort_data,
                                 'recoveryDate': recovery_date_data
                                 }
-                        print(f'codes found')
+                        # We now create the searched effort database which we can update the original database with.
                         searched_effort_database = pd.DataFrame(data=data,
                                                                 columns=['userId', 'characterName', 'cardCode',
                                                                          'cardEffort', 'recoveryDate'])
 
-                        print(f'database generated after doing the checks')
+                        # we save a copy of this with all the unapplicable values
+                        unmatched_worker_database = searched_effort_database[~searched_effort_database.userId.isin([requester_user_id])]
+
+                        unmatched_worker_database.sort_values(by='cardEffort',
+                                                              ascending=False,
+                                                              inplace=True)
 
                         # filter database by requested user
                         searched_effort_database = searched_effort_database[
                             searched_effort_database['userId'] == requester_user_id]
 
-                        print(f'database filtering on the userId done')
-
                         # sort the database by effort in descending order
                         searched_effort_database.sort_values(by='cardEffort',
                                                              ascending=False,
                                                              inplace=True)
-
-                        # generate the array of embed messages
-                        searched_worker_pages = embedGenerator(searched_effort_database)
-
-                        current_embed_description = f"I found the following codes, adding them to the database now...\n " \
-                                                    f"```{searched_worker_pages[0]}```"
-                        search_embed = discord.Embed(title='Search Results',
-                                                     description=current_embed_description,
-                                                     footer='',
-                                                     colour=int('FFFF00', 16)
-                                                     )
-                        if len(searched_effort_database) < 10:
-                            initial_page_upper_range = len(searched_effort_database)
-                        else:
-                            initial_page_upper_range = page_number * 10
-
-                        page_number = 1
-                        search_embed.set_footer(
-                            text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of {len(searched_effort_database)}")
-
-                        search_results_message = await effort_message_request.channel.send(
-                            content=f"<@{requester_user_id}>",
-                            embed=search_embed)
-
-                        await search_results_message.add_reaction('⬅️')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('➡️')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('❌')
-                        time.sleep(0.5)
-                        await search_results_message.add_reaction('✅')
 
                         for code in searched_effort_database.cardCode.values:
                             # search the database to see if the card is in there.
@@ -697,13 +687,11 @@ async def on_message(effort_message_request):
                                 # if the code is present, then we want to append that value in the main database.
                                 # we need to get the index of the card first.
                                 matchIndex = database_cards[database_cards['cardCode'] == code].index[0]
-                                print(f"MATCHED\nold value: {database_cards.loc[matchIndex]}"
-                                      f"\n new value: {searched_effort_database[searched_effort_database['cardCode'] == code].index[0]}\n")
+                                print(f"MATCHED: updating DB entry")
                                 # we now replace the row with the row from our seaarched and filtered database
                                 database_cards.loc[matchIndex] = searched_effort_database.loc[
                                     searched_effort_database[
                                         searched_effort_database['cardCode'] == code].index[0]]
-
 
                             # if there is no match, then we need to append it to the database, rather than updating.
                             else:
@@ -711,50 +699,160 @@ async def on_message(effort_message_request):
                                     searched_effort_database.loc[searched_effort_database[
                                         searched_effort_database['cardCode'] == code].index[0]]
                                 print(
-                                    f"NO MATCH: inserting {searched_effort_database.loc[searched_effort_database[searched_effort_database['cardCode'] == code].index[0]]}")
+                                    f"NO MATCH: adding new entry to DB")
+
+                        # We want to display the data that has no userId.
+                        unmatched_worker_pages = workerInfoGenerator(unmatched_worker_database)
+
+                        # initialise the embed
+
+                        # we now re-initialise our page_number variable for paging on this new message
+                        page_number = 1
+
+                        if unmatched_worker_pages:
+                            if sum(x == requester_user_id for x in user_id_data) == 0:
+                                embed_header_text = f"Hmm, looks like I couldn't actually find any cards that" \
+                                                            f" belonged to you... \n" \
+                                                            f"Take a look at these and if they're yours, please run" \
+                                                            f" a kcharacterinfo command and a kworkerinfo command" \
+                                                            f" for those cards, and run me again!"
+
+                                search_embed = discord.Embed(title='Card Matching Failed',
+                                                             description='',
+                                                             footer='',
+                                                             colour=int('800000', 16))
+
+                            # if there were unmatched workers and we were able to match some of them, then we edit the
+                            # description message and change the colour of the embed.
+                            else:
+                                embed_header_text = f"I've found all your cards! By the way, I found these codes but " \
+                                                            f"weren't able to verify that they were yours. If they were, " \
+                                                            f"please run a kcharacterinfo command and a kworkerinfo command" \
+                                                            f" for those cards and run me again! "
+                                search_embed = discord.Embed(title='Cards Updated',
+                                                             description='',
+                                                             footer='',
+                                                             colour=int('00FF00', 16))
+
+                            current_embed_description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[0]}```\n" \
+                                                        f"Here's some stats:"
+
+                            if len(unmatched_worker_database) < 10:
+                                initial_page_upper_range = len(unmatched_worker_database)
+
+                            else:
+                                initial_page_upper_range = page_number * 10
+                            search_embed.set_footer(
+                                text=f"Showing workers {((page_number - 1) * 10) + 1}-{initial_page_upper_range} of "
+                                     f"{len(unmatched_worker_database)}")
+                        else:
+                            current_embed_description = f"Lucky you, looks like I was able to verify that all of the " \
+                                                        f"cards I found belonged to you! Have some stats anyway."
+                            search_embed = discord.Embed(title='Cards Updated',
+                                                         description='',
+                                                         footer='',
+                                                         colour=int('00FF00', 16))
+
+                        # now we add our constant elements:
+                        search_embed.description = current_embed_description
+
+                        search_embed.add_field(name="Cards Found",
+                                               value=len(card_code_data),
+                                               inline=True)
+                        search_embed.add_field(name="Cards Verified",
+                                               value=sum(x == requester_user_id for x in user_id_data),
+                                               inline=True)
+                        search_embed.add_field(name="Cards Unverified",
+                                               value=len(card_code_data) - sum(x == requester_user_id for x in user_id_data),
+                                               inline=True)
+                        
+                        search_embed.add_field(name="Time Taken",
+                                               value=f"{round(time.time() - new_user_update_time,2)} seconds ")
+
+                        search_results_message = await effort_message_request.channel.send(
+                            content=f"<@{requester_user_id}>",
+                            embed=search_embed)
 
                         # write the update event data to a dataframe, then write it into the database.
-
                         update_event = pd.DataFrame({'requestedBy': [requester_user_id],
                                                      'timeRequested': [embed_message.created_at.timestamp()]})
-                        print(f'now adding {update_event} to the DB')
+
                         update_event.to_csv('workerUpdateEvent.csv',
                                             float_format='%.5f',
                                             mode='a',
                                             index=False,
                                             header=False)
+
                         database_cards.to_csv('initialisedDatabase.csv',
                                               float_format='%.5f',
                                               index=False)
-                        final_message_embed = discord.Embed(description="me done pls run me again")
-                        await search_results_message.edit(embed=final_message_embed)
+
+                        # initialise the page number variable for this message
+                        search_embed_page_number = 1
 
 
-                        # while float(time.time()) < (search_results_message.created_at.timestamp() + float(6000)):
-                        #     try:
-                        #         confirmation_payload = await bot.wait_for('raw_reaction_add', timeout=6000.0)
-                        #     except asyncio.TimeoutError:
-                        #         final_message_embed = discord.Embed(description="I timed out...click faster next time")
-                        #         await search_results_message.edit(embed=final_message_embed)
-                        #     else:
-                        #         print(str(confirmation_payload.emoji))
-                        #         if confirmation_payload.member.id == requester_user_id:
-                        #             print(f'emoji was from the requested user')
-                        #             if confirmation_payload.message_id == search_results_message.id:
-                        #                 print(f'emoji was on the correct')
-                        #                 if str(confirmation_payload.emoji) in ['⬅️', '➡️', '✅', '❌']:
-                        #                     if str(confirmation_payload.emoji) == '✅':
-                        #                         print('tick emoji received')
-                        #                         # we want to compare the results in this validated database and add it to the previous one, which we can then write back into the csv.
-                        #                         # we may want to refactor this to be an append rather than a rewrite.
-                        #                     if str(confirmation_payload.emoji) == '❌':
-                        #                         final_message_embed = discord.Embed(
-                        #                             description="aight ima hea dout")
-                        #                         await search_results_message.edit(embed=final_message_embed)
-                        #                         return
+                        if len(unmatched_worker_pages) >= 2:
+                            # set a variable to the amount of time we want the user to be able to browse the pages
+                            user_paging_duration = float(120)
+                            await search_results_message.add_reaction('⬅️')
+                            time.sleep(0.5)
+                            await search_results_message.add_reaction('➡️')
+                            while float(time.time()) < search_results_message.created_at.timestamp() + user_paging_duration:
 
-    await bot.process_commands(effort_message_request)
+                                try:
+                                    payload = await bot.wait_for('raw_reaction_add', timeout=user_paging_duration)
+                                # we go down this route if there was no reaction added
+                                except asyncio.exceptions.TimeoutError:
+                                    print('ending workflow')
+                                    return
+                                # we only proceed with the code if the user reacted with the right emojis.
+                                print('found a payload')
+                                if payload.member.id == requester_user_id:
+                                    print(f'payload is from the requested user')
+                                    if payload.message_id == search_results_message.id:
+                                        if str(payload.emoji) in ['⬅️', '➡️']:
+                                            # if this is met, then we say if its right, then increment the page number by 1
+                                            # update the content
+                                            # also update the footer
+                                            if str(payload.emoji) == '➡️':
+                                                # if the page number is equal to the max number of pages, we cannot go any further forward.
+                                                if search_embed_page_number == len(unmatched_worker_pages):
+                                                    pass
+                                                # otherwise we should edit the message to display the previous page of results.
+                                                else:
+                                                    search_embed_page_number += 1
 
+                                                    # to make message editing easier, we save the first two lines into a variable.
+                                                    search_embed.description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[search_embed_page_number-1]}```\n" \
+                                                        f"Here's some stats anyway..."
+
+                                                    # the footer needs to show the correct number of workers at the max limit.
+                                                    if search_embed_page_number == len(unmatched_worker_pages):
+                                                        search_embed.set_footer(text=f"Showing workers "
+                                                                                      f"{((search_embed_page_number - 1) * 10) + 1}-{len(unmatched_worker_database)} of {len(unmatched_worker_database)}",
+                                                                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                                                    else:
+                                                        search_embed.set_footer(text=f"Showing workers "
+                                                                                      f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
+                                                                                 icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+
+                                            if str(payload.emoji) == '⬅️':
+                                                # if the page_number is 1, we cannot go any further back. this is invalid so we do nothing
+                                                if search_embed_page_number == 1:
+                                                    pass
+                                                # otherwise we should edit the message to display the previous page of results.
+                                                else:
+                                                    # decrease the page_number by 1, then pull in the array corresponding to that page.
+                                                    search_embed_page_number -= 1
+                                                    search_embed.description = embed_header_text + \
+                                                        f"```python\n{unmatched_worker_pages[search_embed_page_number-1]}```\n" \
+                                                        f"Here's some stats anyway..."
+                                                    search_embed.set_footer(text=f"Showing workers "
+                                                                                  f"{((search_embed_page_number - 1) * 10) + 1}-{search_embed_page_number * 10} of {len(unmatched_worker_database)}",
+                                                                             icon_url='https://www.nicepng.com/png/full/155-1552831_yay-for-the-transparent-diamond-pickaxe-im-bored.png')
+                                            await search_results_message.edit(embed=search_embed)
 
 @bot.event
 # this is to find the klu
@@ -863,7 +961,7 @@ async def on_message(message):
             else:
                 message_info = message.content
             print(f'Lookup bot found an error, it probably received the wrong message. Here is the message:\n'
-                  f'{message.info}\n\n')
+                  f'{message}\n\n')
 
         if data:
             responseText = baseValueResponse(data)
@@ -1151,176 +1249,237 @@ async def on_message(message):
     if str(payload.emoji) == '❌':
         await confirmation_message.edit(content="Gotcha, I won't go snooping around.")
 
-    # await bot.process_commands(message)
+    await bot.process_commands(message)
+#
+# @bot.event
+# # testing
+# async def on_reaction_add(reaction, user):
+#     if user.id == 130401447052443649:
+#         print("matched egg, send a message to discord")
+#         temp_string = "<@!130401447052443649>, you placed Springtide Egg #7 into your basket!"
+#         print("waiting for egg pickup msg")
+#         egg_matched = False
+#         while egg_matched == False:
+#             try:
+#                 egg_pickup = await bot.wait_for('message', timeout=60.0)
+#                 print(egg_pickup.content)
+#                 if "you placed" in egg_pickup.content:
+#                     if egg_pickup.author.id == 130401447052443649:
+#                         print("success")
+#                         egg_matched = True
+#             except:
+#                 print("no-one claimed the egg sadge")
+#         #now parse the message string
+#         temp_list = temp_string.split()
+#         egg_number = re.sub('[<>@!,]','','stEgg1a')
+#         print(f'{egg_number}')
+
+
+@bot.event
+# this pings users if about the egg event
+async def on_reaction_add(reaction, user):
+    # define the array of emoji names that Karuta uses:
+    egg_names = ('stEgg1a', 'stEgg2a', 'stEgg3a', 'stEgg4a', 'stEgg5a', 'stEgg6a', 'stEgg7a', 'stEgg8a', 'stEgg9a', 'stEgg10a',
+                 'stEgg11a', 'stEgg12a', 'stEgg13a', 'stEgg14a', 'stEgg15a', 'stEgg16a', 'stEgg17a', 'stEgg18a', 'stEgg19a', 'stEgg20a')
+
+    #define the karuta_easter role
+    karuta_easter_role_id = 826619946834067467
+
+    # wait for a reaction from the bot
+    try:
+        if user.id == KARUTA_BOT:
+            if reaction.emoji.name in egg_names:
+                egg_number = re.sub('[a-z]','',reaction.emoji.name)
+                egg_number = re.sub('[A-Z]', '', egg_number)
+                egg_message_content = f"<@&{karuta_easter_role_id}> egg drop #{egg_number} bois"
+                await reaction.message.channel.send(f"{egg_message_content}")
+
+                # troll_duration = 5
+                # duration_changes = 25
+                # troll_pause = troll_duration/duration_changes
+                # troll_text = "\n get trolled :shopping_cart:"
+                # i=0
+                # for i in range(duration_changes):
+                #     time.sleep(troll_pause)
+                #     number_of_lines = random.randint(1, 8)
+                #     await egg_message.edit(content=egg_message_content + number_of_lines*troll_text)
+                #     i+=1
+    except:
+        pass
+
+
+
+
+    #now, create a dataframe for the eggs.
 
 
 # ---- DEPRECATED CODE ----
 
-# flower detection bot the Valentine's day event 2021. Needs to be refactored to use the bot object.
-@client.event
-# this event is for the flower event
-async def on_reaction_add(reaction, user):
-    # define the list of flowers that require a wait time.
-    flowers = np.array([
-        ['🌹', 809464733320347678],
-        ['🌻', 809464799364120586],
-        ['🌼', 809498603865243658],
-        ['🌷', 809464596539637820]])
-
-    # define how many seconds we want to give for people to grab the flower.
-    mentions_cutoff = int(5)
-    free_for_all_cutoff = int(45)
-
-    # check if the message was sent by karuta bot
-    if user.id == KARUTA_BOT:
-
-        # defining flowerEmoji as our emoji in the list that we check against. we now check each element
-        i = 0
-        for flowerEmoji in flowers[:, 0]:
-
-            # if the emoji is not matched, then increment by 1
-            if str(reaction) != flowerEmoji:
-                i += 1
-
-            # if the emoji is matched, then proceed with the rest of the code
-            else:
-                # pull out the role ID that corresponds to this flower
-                flower_role_id = flowers[i, 1]
-
-                # now that we've identified a flower has spawned, send a message in the chat.
-                flower_spawn_message = await reaction.message.channel.send(
-                    "A flower has spawned! Let me see what kind of flower it is... 🧐")
-
-                # at this point, we will also set the time that the flower spawned.
-                spawn_time = time.time()
-
-                # now define the cutoff time after which we want to send the cutoff message.
-                mentions_cutoff_time = spawn_time + mentions_cutoff
-
-                # finally for later, we define the free for all time,
-                # after which we edit the message to say that anyone can grab it.
-                free_for_all_cutoff_time = spawn_time + free_for_all_cutoff
-
-                payload_sent = False
-                # wait for a reaction to be added. we want to keep iterating within the cutoff time period and stop
-                while time.time() < mentions_cutoff_time:
-
-                    try:
-                        # code will wait for a specified period for any reaction to be sent (any)
-                        payload = await client.wait_for('raw_reaction_add', timeout=mentions_cutoff)
-
-                        # if none are sent at all, then terminate the code and proceed to send a mention out.
-                    except asyncio.exceptions.TimeoutError:
-                        print(f'no emoji was received')
-                        payload_sent = False
-
-                        # if an emoji was sent in the server, we want to check that it's the right one.
-                    else:
-                        reacted_emoji = payload.emoji
-                        payload_sent = True
-
-                        # now, check if the emoji is the same as the flower we're interested in.
-                        if str(reacted_emoji) == flowers[i, 0]:
-                            print('the emoji is the same')
-
-                            # before we can proceed, we also want to check that the react was on the initial message.
-                            if payload.message_id == reaction.message.id:
-                                print('the react is on the same message')
-
-                                # if we have got a flower mention on the same message,
-                                # then we set the flag to be False and break the loop.
-                                send_mentions = False
-                                print('success!')
-                                break
-                            else:
-                                print('the react is on the wrong message')
-                                send_mentions = True
-                        else:
-                            print('the emoji is not the same')
-                            send_mentions = True
-
-                print(
-                    f'time is up. the cutoff time was {mentions_cutoff_time} '
-                    f'and it is now {time.time()}\n The payload flag is {payload_sent}')
-
-                # we need to first check on time in case the payload has not been sent.
-                # assuming that we've passed the cutoff time, check if a payload has been sent.
-                # if it hasn't, then we can just send the mentions message.
-                flower_role_title = discord.utils.get(client.guilds[0].roles, id=int(flower_role_id))
-                if payload_sent == False:
-                    flower_confirmation_message = await reaction.message.channel.send(
-                        f"I've got it: it's a {flowerEmoji} ! "
-                        f"I think {flower_role_title.mention} knows how to care for them.")
-                    print(
-                        'payload sent was False, meaning that either no-one reacted with an emoji, or an emoji was added but not with the appropriate flower.')
-                else:
-                    # if a payload has been sent, then we check if we should sendMentions or not.
-                    # if sendMentions is False, it means that someone claimed the flower.
-                    send_followup_mentions = ''
-                    if send_mentions == False:
-                        await flower_spawn_message.edit(
-                            content="I couldn't identify it, looks like someone else has picked it up before I could 😖")
-                        print(
-                            'payload sent was true, but sendMentions flag was false,'
-                            'meaning that someone picked up the flower within the limit.')
-                    else:
-                        # get the role object for the flower
-                        # this will need to be refactored if connected to more than one server
-                        flower_confirmation_message = await reaction.message.channel.send(
-                            f"I've got it: it's a {flowerEmoji} ! "
-                            f"I think {flower_role_title.mention} knows how to care for them.")
-                        print(
-                            'sendMentions was True, meaning that no-one reacted with the right flower'
-                            'and 5 seconds had passed')
-                        try:
-                            print(
-                                f'now that 5s has passed, we wait for the next reaction. '
-                                f'This will last {free_for_all_cutoff_time - time.time()} seconds.')
-                            payload_second = await client.wait_for('raw_reaction_add',
-                                                                   timeout=free_for_all_cutoff_time - time.time())
-                        # if no reaction was added, then time it out
-                        except asyncio.exceptions.TimeoutError:
-                            print(
-                                f'a payload still was not received, so we edit our old message,'
-                                f'saying that someone should grab the flower.')
-                            await flower_confirmation_message.edit(
-                                content="That flower looks like it's going to disappear soon,"
-                                        "someone should grab it before it does!")
-                        # if a reaction was added, first check if it's the right emoji and on the right message.
-                        else:
-                            # now, check if the emoji is the same as the flower we're interested in.
-                            if str(reacted_emoji) == flowers[i, 0]:
-                                print('a payload was sent after 5s and the emoji is the same')
-
-                                # before we can proceed, we also want to check that
-                                # the react was on the initial message.
-                                if payload_second.message_id == reaction.message.id:
-                                    print('a payload was sent after 5s the react is on the same message')
-
-                                    # if we have got a flower mention on the same message,
-                                    # then we set the flag to be False and break the loop.
-                                    send_followup_mentions = False
-                                    print('success! the payload was the right flower')
-                                    break
-                                else:
-                                    print('for the second payload, the react is on the wrong message')
-                                    send_followup_mentions = True
-                            else:
-                                print('the emoji is not the same')
-                                send_followup_mentions = True
-
-                        # now we've determined if it was the right message. using the usual logic:
-                        if send_followup_mentions == True:
-                            # if emojis have been placed but not the flower, ie. it still hasn't been claimed, then send out the message.
-                            await flower_confirmation_message.edit(
-                                content="That flower looks like it's going to disappear soon, someone should grab it before it does!")
-                        # if it has been claimed, then send out the claim message instead.
-                        else:
-                            # write the time left on the timer.
-                            timeRemaining = 60 - (time.time() - spawn_time)
-                            await flower_confirmation_message.edit(
-                                content=f"Phew, looks like someone grabbed it in time. You had {timeRemaining} seconds left to claim it! ")
-
-
+# # flower detection bot the Valentine's day event 2021. Needs to be refactored to use the bot object.
+# @bot.event
+# # this event is for the flower event
+# async def on_reaction_add(reaction, user):
+#     # define the list of flowers that require a wait time.
+#     flowers = np.array([
+#         ['🌹', 809464733320347678],
+#         ['🌻', 809464799364120586],
+#         ['🌼', 809498603865243658],
+#         ['🌷', 809464596539637820]])
+#
+#     # define how many seconds we want to give for people to grab the flower.
+#     mentions_cutoff = int(5)
+#     free_for_all_cutoff = int(45)
+#
+#     # check if the message was sent by karuta bot
+#     if user.id == KARUTA_BOT:
+#
+#         # defining flowerEmoji as our emoji in the list that we check against. we now check each element
+#         i = 0
+#         for flowerEmoji in flowers[:, 0]:
+#
+#             # if the emoji is not matched, then increment by 1
+#             if str(reaction) != flowerEmoji:
+#                 i += 1
+#
+#             # if the emoji is matched, then proceed with the rest of the code
+#             else:
+#                 # pull out the role ID that corresponds to this flower
+#                 flower_role_id = flowers[i, 1]
+#
+#                 # now that we've identified a flower has spawned, send a message in the chat.
+#                 flower_spawn_message = await reaction.message.channel.send(
+#                     "A flower has spawned! Let me see what kind of flower it is... 🧐")
+#
+#                 # at this point, we will also set the time that the flower spawned.
+#                 spawn_time = time.time()
+#
+#                 # now define the cutoff time after which we want to send the cutoff message.
+#                 mentions_cutoff_time = spawn_time + mentions_cutoff
+#
+#                 # finally for later, we define the free for all time,
+#                 # after which we edit the message to say that anyone can grab it.
+#                 free_for_all_cutoff_time = spawn_time + free_for_all_cutoff
+#
+#                 payload_sent = False
+#                 # wait for a reaction to be added. we want to keep iterating within the cutoff time period and stop
+#                 while time.time() < mentions_cutoff_time:
+#
+#                     try:
+#                         # code will wait for a specified period for any reaction to be sent (any)
+#                         payload = await client.wait_for('raw_reaction_add', timeout=mentions_cutoff)
+#
+#                         # if none are sent at all, then terminate the code and proceed to send a mention out.
+#                     except asyncio.exceptions.TimeoutError:
+#                         print(f'no emoji was received')
+#                         payload_sent = False
+#
+#                         # if an emoji was sent in the server, we want to check that it's the right one.
+#                     else:
+#                         reacted_emoji = payload.emoji
+#                         payload_sent = True
+#
+#                         # now, check if the emoji is the same as the flower we're interested in.
+#                         if str(reacted_emoji) == flowers[i, 0]:
+#                             print('the emoji is the same')
+#
+#                             # before we can proceed, we also want to check that the react was on the initial message.
+#                             if payload.message_id == reaction.message.id:
+#                                 print('the react is on the same message')
+#
+#                                 # if we have got a flower mention on the same message,
+#                                 # then we set the flag to be False and break the loop.
+#                                 send_mentions = False
+#                                 print('success!')
+#                                 break
+#                             else:
+#                                 print('the react is on the wrong message')
+#                                 send_mentions = True
+#                         else:
+#                             print('the emoji is not the same')
+#                             send_mentions = True
+#
+#                 print(
+#                     f'time is up. the cutoff time was {mentions_cutoff_time} '
+#                     f'and it is now {time.time()}\n The payload flag is {payload_sent}')
+#
+#                 # we need to first check on time in case the payload has not been sent.
+#                 # assuming that we've passed the cutoff time, check if a payload has been sent.
+#                 # if it hasn't, then we can just send the mentions message.
+#                 flower_role_title = discord.utils.get(client.guilds[0].roles, id=int(flower_role_id))
+#                 if payload_sent == False:
+#                     flower_confirmation_message = await reaction.message.channel.send(
+#                         f"I've got it: it's a {flowerEmoji} ! "
+#                         f"I think {flower_role_title.mention} knows how to care for them.")
+#                     print(
+#                         'payload sent was False, meaning that either no-one reacted with an emoji, or an emoji was added but not with the appropriate flower.')
+#                 else:
+#                     # if a payload has been sent, then we check if we should sendMentions or not.
+#                     # if sendMentions is False, it means that someone claimed the flower.
+#                     send_followup_mentions = ''
+#                     if send_mentions == False:
+#                         await flower_spawn_message.edit(
+#                             content="I couldn't identify it, looks like someone else has picked it up before I could 😖")
+#                         print(
+#                             'payload sent was true, but sendMentions flag was false,'
+#                             'meaning that someone picked up the flower within the limit.')
+#                     else:
+#                         # get the role object for the flower
+#                         # this will need to be refactored if connected to more than one server
+#                         flower_confirmation_message = await reaction.message.channel.send(
+#                             f"I've got it: it's a {flowerEmoji} ! "
+#                             f"I think {flower_role_title.mention} knows how to care for them.")
+#                         print(
+#                             'sendMentions was True, meaning that no-one reacted with the right flower'
+#                             'and 5 seconds had passed')
+#                         try:
+#                             print(
+#                                 f'now that 5s has passed, we wait for the next reaction. '
+#                                 f'This will last {free_for_all_cutoff_time - time.time()} seconds.')
+#                             payload_second = await client.wait_for('raw_reaction_add',
+#                                                                    timeout=free_for_all_cutoff_time - time.time())
+#                         # if no reaction was added, then time it out
+#                         except asyncio.exceptions.TimeoutError:
+#                             print(
+#                                 f'a payload still was not received, so we edit our old message,'
+#                                 f'saying that someone should grab the flower.')
+#                             await flower_confirmation_message.edit(
+#                                 content="That flower looks like it's going to disappear soon,"
+#                                         "someone should grab it before it does!")
+#                         # if a reaction was added, first check if it's the right emoji and on the right message.
+#                         else:
+#                             # now, check if the emoji is the same as the flower we're interested in.
+#                             if str(reacted_emoji) == flowers[i, 0]:
+#                                 print('a payload was sent after 5s and the emoji is the same')
+#
+#                                 # before we can proceed, we also want to check that
+#                                 # the react was on the initial message.
+#                                 if payload_second.message_id == reaction.message.id:
+#                                     print('a payload was sent after 5s the react is on the same message')
+#
+#                                     # if we have got a flower mention on the same message,
+#                                     # then we set the flag to be False and break the loop.
+#                                     send_followup_mentions = False
+#                                     print('success! the payload was the right flower')
+#                                     break
+#                                 else:
+#                                     print('for the second payload, the react is on the wrong message')
+#                                     send_followup_mentions = True
+#                             else:
+#                                 print('the emoji is not the same')
+#                                 send_followup_mentions = True
+#
+#                         # now we've determined if it was the right message. using the usual logic:
+#                         if send_followup_mentions == True:
+#                             # if emojis have been placed but not the flower, ie. it still hasn't been claimed, then send out the message.
+#                             await flower_confirmation_message.edit(
+#                                 content="That flower looks like it's going to disappear soon, someone should grab it before it does!")
+#                         # if it has been claimed, then send out the claim message instead.
+#                         else:
+#                             # write the time left on the timer.
+#                             timeRemaining = 60 - (time.time() - spawn_time)
+#                             await flower_confirmation_message.edit(
+#                                 content=f"Phew, looks like someone grabbed it in time. You had {timeRemaining} seconds left to claim it! ")
+#
+#
 bot.run(TOKEN)
-# client.run(TOKEN)
+# # client.run(TOKEN)
