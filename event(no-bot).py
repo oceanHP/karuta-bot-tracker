@@ -1250,7 +1250,7 @@ async def on_message(message):
         await confirmation_message.edit(content="Gotcha, I won't go snooping around.")
 
     await bot.process_commands(message)
-
+#
 # @bot.event
 # # testing
 # async def on_reaction_add(reaction, user):
@@ -1271,9 +1271,8 @@ async def on_message(message):
 #                 print("no-one claimed the egg sadge")
 #         #now parse the message string
 #         temp_list = temp_string.split()
-#         egg_user = re.sub('[<>@!,]','',temp_list[0])
-#         egg_number = temp_list[5].strip('#')
-#         print(f'{egg_user}, {egg_number}')
+#         egg_number = re.sub('[<>@!,]','','stEgg1a')
+#         print(f'{egg_number}')
 
 
 @bot.event
@@ -1290,19 +1289,21 @@ async def on_reaction_add(reaction, user):
     try:
         if user.id == KARUTA_BOT:
             if reaction.emoji.name in egg_names:
-                egg_message_content = f"<@&{karuta_easter_role_id}> egg drop bois"
-                egg_message = await reaction.message.channel.send(f"{egg_message_content}")
+                egg_number = re.sub('[a-z]','',reaction.emoji.name)
+                egg_number = re.sub('[A-Z]', '', egg_number)
+                egg_message_content = f"<@&{karuta_easter_role_id}> egg drop #{egg_number} bois"
+                await reaction.message.channel.send(f"{egg_message_content}")
 
-                troll_duration = 5
-                duration_changes = 25
-                troll_pause = troll_duration/duration_changes
-                troll_text = "\n get trolled :shopping_cart:"
-                i=0
-                for i in range(duration_changes):
-                    time.sleep(troll_pause)
-                    number_of_lines = random.randint(1, 8)
-                    await egg_message.edit(content=egg_message_content + number_of_lines*troll_text)
-                    i+=1
+                # troll_duration = 5
+                # duration_changes = 25
+                # troll_pause = troll_duration/duration_changes
+                # troll_text = "\n get trolled :shopping_cart:"
+                # i=0
+                # for i in range(duration_changes):
+                #     time.sleep(troll_pause)
+                #     number_of_lines = random.randint(1, 8)
+                #     await egg_message.edit(content=egg_message_content + number_of_lines*troll_text)
+                #     i+=1
     except:
         pass
 
