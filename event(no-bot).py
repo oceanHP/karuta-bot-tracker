@@ -1418,9 +1418,53 @@ async def on_reaction_add(reaction, user):
         if user.id == KARUTA_BOT:
             if reaction.emoji.name in egg_names:
                 egg_number = re.sub('[a-z]','',reaction.emoji.name)
-                egg_number = re.sub('[A-Z]', '', egg_number)
-                egg_message_content = f"<@&{karuta_easter_role_id}> egg drop #{egg_number} bois"
-                await reaction.message.channel.send(f"{egg_message_content}")
+                egg_number = int(re.sub('[A-Z]', '', egg_number))
+                egg_message_content = f"<@&{karuta_easter_role_id}> egg drop #{egg_number} bois\n"
+
+                print(egg_number)
+                if egg_number == 1:
+                    egg_extra_message = f"<@&{829866591986253835}> you guys look too"
+                elif egg_number == 2:
+                    egg_extra_message = f"<@&{829867150067499048}> you guys look too"
+                elif egg_number == 3:
+                    egg_extra_message = f"<@&{829867213405159484}> you guys look too"
+                elif egg_number == 4:
+                    egg_extra_message = f"<@&{829867258380943401}> you guys look too"
+                elif egg_number == 5:
+                    egg_extra_message = f"<@&{829867294335041557}> you guys look too"
+                elif egg_number == 6:
+                    egg_extra_message = f"<@&{829867321484509264}> you guys look too"
+                elif egg_number == 7:
+                    egg_extra_message = f"<@&{829867336160772126}> you guys look too"
+                elif egg_number == 8:
+                    egg_extra_message = f"<@&{829867347854622772}> you guys look too"
+                elif egg_number == 9:
+                    egg_extra_message = f"<@&{829867361842364486}> you guys look too"
+                elif egg_number == 10:
+                    egg_extra_message = f"<@&{829867373187563550}> you guys look too"
+                elif egg_number == 10:
+                    egg_extra_message = f"<@&{829867386400014408}> you guys look too"
+                elif egg_number == 12:
+                    egg_extra_message = f"<@&{829867399360282625}> you guys look too"
+                elif egg_number == 13:
+                    egg_extra_message = f"<@&{829867410256560128}> you guys look too"
+                elif egg_number == 14:
+                    egg_extra_message = f"<@&{829867423142117376}> you guys look too"
+                elif egg_number == 15:
+                    egg_extra_message = f"<@&{829867434680385557}> you guys look too"
+                elif egg_number == 16:
+                    egg_extra_message = f"<@&{829867445031272488}> you guys look too"
+                elif egg_number == 17:
+                    egg_extra_message = f"<@&{829867454343544893}> you guys look too"
+                elif egg_number == 18:
+                    egg_extra_message = f"<@&{829867468364840990}> you guys look too"
+                elif egg_number == 19:
+                    egg_extra_message = f"<@&{829867507983843328}> you guys look too"
+                elif egg_number == 20:
+                    egg_extra_message = f"<@&{829867522626420786}> you guys look too"
+
+                egg_final_message = egg_message_content + egg_extra_message
+                await reaction.message.channel.send(f"{egg_final_message}")
 
                 # troll_duration = 5
                 # duration_changes = 25
