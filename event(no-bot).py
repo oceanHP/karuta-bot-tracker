@@ -64,7 +64,7 @@ bot_prefix = 'pog.'
 bot = Bot(command_prefix=bot_prefix.lower())
 
 # get the server for Catwad
-localServer = discord.utils.get(client.guilds, name=GUILD)
+localServer = discord.utils.get(client.guilds, id=GUILD)
 
 # define a function which will alter global variables like flags
 baseValueFlag = True
@@ -75,7 +75,6 @@ async def on_ready():
     print(f'{bot.user.name} has connected to Discord!')
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="pog.helpme"))
     print("Bot status has been changed to list the bot help command!\n")
-
 
 @bot.command(name='helpme')
 # prints list of commands
@@ -1420,8 +1419,6 @@ async def on_reaction_add(reaction, user):
                 egg_number = re.sub('[a-z]','',reaction.emoji.name)
                 egg_number = int(re.sub('[A-Z]', '', egg_number))
                 egg_message_content = f"<@&{karuta_easter_role_id}> egg drop #{egg_number} bois\n"
-
-                print(egg_number)
                 if egg_number == 1:
                     egg_extra_message = f"<@&{829866591986253835}> you guys look too"
                 elif egg_number == 2:
@@ -1465,24 +1462,146 @@ async def on_reaction_add(reaction, user):
 
                 egg_final_message = egg_message_content + egg_extra_message
                 await reaction.message.channel.send(f"{egg_final_message}")
-
-                # troll_duration = 5
-                # duration_changes = 25
-                # troll_pause = troll_duration/duration_changes
-                # troll_text = "\n get trolled :shopping_cart:"
-                # i=0
-                # for i in range(duration_changes):
-                #     time.sleep(troll_pause)
-                #     number_of_lines = random.randint(1, 8)
-                #     await egg_message.edit(content=egg_message_content + number_of_lines*troll_text)
-                #     i+=1
     except:
         pass
 
+@bot.event
+# this checks for egg roles
+async def on_raw_reaction_add(payload):
+    catwad = bot.get_guild(121675412873936897)
+    # check if the react was on the first message
+    if payload.message_id == 829874207201951785:
+        # now check for the react: if it's the right one, then add the role
+        if payload.emoji.name == "1\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#1", catwad.roles)
+        elif payload.emoji.name == "2\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#2", catwad.roles)
+        elif payload.emoji.name == "3\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#3", catwad.roles)
+        elif payload.emoji.name == "4\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#4", catwad.roles)
+        elif payload.emoji.name == "5\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#5", catwad.roles)
+        elif payload.emoji.name == "6\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#6", catwad.roles)
+        elif payload.emoji.name == "7\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#7", catwad.roles)
+        elif payload.emoji.name == "8\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#8", catwad.roles)
+        elif payload.emoji.name == "9\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#9", catwad.roles)
+        elif payload.emoji.name == "0\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#10", catwad.roles)
+        elif payload.emoji.name == "🥚":
+            egg_role = discord.utils.find(lambda m: m.name == "karuta easter event", catwad.roles)
+        await payload.member.add_roles(egg_role)
+
+    # otherwise, check if it's on the second message
+    elif payload.message_id == 829874247371456592:
+        if payload.emoji.name == "1\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#11", catwad.roles)
+        elif payload.emoji.name == "2\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#12", catwad.roles)
+        elif payload.emoji.name == "3\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#13", catwad.roles)
+        elif payload.emoji.name == "4\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#14", catwad.roles)
+        elif payload.emoji.name == "5\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#15", catwad.roles)
+        elif payload.emoji.name == "6\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#16", catwad.roles)
+        elif payload.emoji.name == "7\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#17", catwad.roles)
+        elif payload.emoji.name == "8\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#18", catwad.roles)
+        elif payload.emoji.name == "9\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#19", catwad.roles)
+        elif payload.emoji.name == "0\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#20", catwad.roles)
+        await payload.member.add_roles(egg_role)
+
+@bot.event
+# this removes egg roles
+async def on_raw_reaction_remove(payload):
+    catwad = bot.get_guild(121675412873936897)
+    reaction_remover = await catwad.fetch_member(payload.user_id)
+    # check if the react was on the first message
+    if payload.message_id == 829874207201951785:
+        # now check for the react: if it's the right one, then add the role
+        if payload.emoji.name == "1\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#1", catwad.roles)
+        elif payload.emoji.name == "2\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#2", catwad.roles)
+        elif payload.emoji.name == "3\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#3", catwad.roles)
+        elif payload.emoji.name == "4\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#4", catwad.roles)
+        elif payload.emoji.name == "5\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#5", catwad.roles)
+        elif payload.emoji.name == "6\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#6", catwad.roles)
+        elif payload.emoji.name == "7\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#7", catwad.roles)
+        elif payload.emoji.name == "8\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#8", catwad.roles)
+        elif payload.emoji.name == "9\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#9", catwad.roles)
+        elif payload.emoji.name == "0\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#10", catwad.roles)
+        elif payload.emoji.name == "🥚":
+            egg_role = discord.utils.find(lambda m: m.name == "karuta easter event", catwad.roles)
+        await reaction_remover.remove_roles(egg_role)
+
+    # otherwise, check if it's on the second message
+    elif payload.message_id == 829874247371456592:
+        if payload.emoji.name == "1\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#11", catwad.roles)
+        elif payload.emoji.name == "2\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name=="egg#12", catwad.roles)
+        elif payload.emoji.name == "3\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#13", catwad.roles)
+        elif payload.emoji.name == "4\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#14", catwad.roles)
+        elif payload.emoji.name == "5\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#15", catwad.roles)
+        elif payload.emoji.name == "6\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#16", catwad.roles)
+        elif payload.emoji.name == "7\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#17", catwad.roles)
+        elif payload.emoji.name == "8\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#18", catwad.roles)
+        elif payload.emoji.name == "9\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#19", catwad.roles)
+        elif payload.emoji.name == "0\u20e3":
+            egg_role = discord.utils.find(lambda m: m.name == "egg#20", catwad.roles)
+
+        await reaction_remover.remove_roles(egg_role)
+    else:
+        pass
+
+@bot.event
+# initialises the first emojis for the bot
+async def on_ready():
+    # define the egg channel
+    egg_channel = bot.get_channel(829874134842212362)
+    # get the message class for eggs 1-10
+    message_1_to_10 = await egg_channel.fetch_message(829874207201951785)
+    message_11_to_20 = await egg_channel.fetch_message(829874247371456592)
+
+    # initialise the initial reacts
+    i=0
+    emoji_list = ['1','2','3','4','5','6','7','8','9','0']
+    emoji_list = [s + "\u20e3" for s in emoji_list]
+    for i in range(len(emoji_list)):
+        await message_1_to_10.add_reaction(emoji_list[i])
+        await message_11_to_20.add_reaction(emoji_list[i])
+        i=+1
+    await message_1_to_10.add_reaction("🥚")
 
 
 
-    #now, create a dataframe for the eggs.
+
+
 
 
 # ---- DEPRECATED CODE ----
